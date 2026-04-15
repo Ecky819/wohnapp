@@ -1,0 +1,202 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Hilfsfunktionen ───────────────────────────────────────────────────────
+
+    /// Gibt true zurück wenn der anfragende User eingeloggt ist
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    /// Liest die gespeicherte Rolle des eingeloggten Users aus Firestore
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    /// Liest die tenantId des eingeloggten Users
+    function userTenantId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId;
+    }
+
+    function isManager() {
+      return isAuth() && userRole() == 'manager';
+    }
+
+    function isContractor() {
+      return isAuth() && userRole() == 'contractor';
+    }
+
+    function isTenantUser() {
+      return isAuth() && userRole() == 'tenant_user';
+    }
+
+    /// Prüft ob das Dokument zum selben Tenant gehört wie der eingeloggte User
+    function sameTenant(data) {
+      return data.tenantId == userTenantId();
+    }
+
+    // ─── users/{uid} ───────────────────────────────────────────────────────────
+
+    match /users/{uid} {
+      // Jeder eingeloggte User darf sein eigenes Dokument lesen und schreiben
+      allow read: if isAuth() && (
+        request.auth.uid == uid ||
+        // Manager dürfen alle User ihres Tenants lesen (für Handwerker-Zuweisung)
+        isManager()
+      );
+
+      // Erstellen nur bei Registrierung (kein vorhandenes Dokument)
+      allow create: if isAuth() && request.auth.uid == uid;
+
+      // Update nur auf eigenem Dokument — oder Manager im selben Tenant
+      allow update: if isAuth() && (
+        request.auth.uid == uid ||
+        isManager()
+      );
+
+      allow delete: if false;
+    }
+
+    // ─── tickets/{ticketId} ────────────────────────────────────────────────────
+
+    match /tickets/{ticketId} {
+      // Manager: alle Tickets des eigenen Tenants
+      allow read: if isManager() && sameTenant(resource.data);
+
+      // Mieter: nur eigene Tickets
+      allow read: if isTenantUser() &&
+        resource.data.createdBy == request.auth.uid;
+
+      // Handwerker: nur zugewiesene Tickets
+      allow read: if isContractor() &&
+        resource.data.assignedTo == request.auth.uid;
+
+      // Mieter darf Tickets erstellen — tenantId muss der eigenen entsprechen
+      allow create: if isTenantUser() &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.tenantId == userTenantId() &&
+        request.resource.data.status == 'open';
+
+      // Manager darf Tickets erstellen (z.B. Wartungstickets)
+      allow create: if isManager() &&
+        request.resource.data.tenantId == userTenantId();
+
+      // Manager darf alles im Ticket ändern (Status, Zuweisung etc.)
+      allow update: if isManager() && sameTenant(resource.data);
+
+      // Handwerker darf nur Status ändern (nichts anderes)
+      allow update: if isContractor() &&
+        resource.data.assignedTo == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+
+      // Niemand darf Tickets löschen (Audit-Trail)
+      allow delete: if false;
+
+      // ── tickets/{ticketId}/comments/{commentId} ──────────────────────────
+      match /comments/{commentId} {
+        // Alle Beteiligten dürfen Kommentare lesen (Manager, Handwerker, Ersteller)
+        allow read: if isAuth();
+
+        // Jeder eingeloggte User darf Kommentare hinzufügen
+        allow create: if isAuth() &&
+          request.resource.data.authorId == request.auth.uid;
+
+        // Nur der Autor darf seinen Kommentar löschen
+        allow delete: if isAuth() &&
+          resource.data.authorId == request.auth.uid;
+
+        allow update: if false;
+      }
+
+      // ── tickets/{ticketId}/activity/{entryId} ────────────────────────────
+      match /activity/{entryId} {
+        // Manager, zugewiesener Handwerker und Ticket-Ersteller dürfen lesen
+        allow read: if isAuth() && (
+          isManager() ||
+          get(/databases/$(database)/documents/tickets/$(ticketId)).data.assignedTo == request.auth.uid ||
+          get(/databases/$(database)/documents/tickets/$(ticketId)).data.createdBy == request.auth.uid
+        );
+
+        // Jeder eingeloggte User darf Einträge schreiben (actorId wird im Client gesetzt)
+        allow create: if isAuth() &&
+          request.resource.data.actorId == request.auth.uid;
+
+        allow update, delete: if false;
+      }
+    }
+
+    // ─── buildings/{buildingId} ────────────────────────────────────────────────
+
+    match /buildings/{buildingId} {
+      // Alle eingeloggten User desselben Tenants dürfen Gebäude lesen
+      allow read: if isAuth() && resource.data.tenantId == userTenantId();
+
+      // Nur Manager dürfen Gebäude anlegen und bearbeiten
+      allow create, update: if isManager() &&
+        request.resource.data.tenantId == userTenantId();
+
+      allow delete: if false;
+    }
+
+    // ─── units/{unitId} ───────────────────────────────────────────────────────
+
+    match /units/{unitId} {
+      // Alle eingeloggten User desselben Tenants dürfen Wohnungen lesen
+      allow read: if isAuth() && resource.data.tenantId == userTenantId();
+
+      // Nur Manager dürfen Wohnungen anlegen und bearbeiten
+      allow create, update: if isManager() &&
+        request.resource.data.tenantId == userTenantId();
+
+      allow delete: if false;
+
+      // ── units/{unitId}/devices/{deviceId} ────────────────────────────────
+      match /devices/{deviceId} {
+        // Alle eingeloggten User dürfen Geräte lesen (Tenant geprüft via Parent)
+        allow read: if isAuth();
+
+        // Nur Manager dürfen Geräte anlegen, bearbeiten, löschen
+        allow create, update, delete: if isManager();
+      }
+    }
+
+    // ─── invitations/{code} ───────────────────────────────────────────────────
+
+    match /invitations/{code} {
+      // Jeder eingeloggte User darf eine Einladung lesen (für Validierung bei Registrierung)
+      allow read: if isAuth();
+
+      // Nur Manager dürfen Einladungen erstellen
+      allow create: if isManager() &&
+        request.resource.data.createdBy == request.auth.uid;
+
+      // Nur das markUsed-Update ist erlaubt (used + usedAt), oder Manager im eigenen Tenant
+      allow update: if isAuth() && (
+        isManager() ||
+        // Registrierung: nur used/usedAt darf gesetzt werden
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used', 'usedAt'])
+      );
+
+      allow delete: if false;
+    }
+
+    // ─── notifications/{notifId} ───────────────────────────────────────────────
+
+    match /notifications/{notifId} {
+      // Jeder eingeloggte User darf Notifications anlegen (Cross-User-Trigger
+      // für Status-Änderungen, Zuweisungen, Kommentare). Die Cloud Function
+      // sendet die eigentliche FCM-Nachricht via Admin SDK.
+      allow create: if isAuth();
+
+      // User liest nur eigene Notifications
+      allow read: if isAuth() &&
+        resource.data.targetUserId == request.auth.uid;
+
+      // Niemand darf über Client updaten oder löschen (nur Admin SDK)
+      allow update, delete: if false;
+    }
+
+  }
+}

@@ -1,0 +1,28 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return request.auth.uid == uid;
+    }
+
+    // ── tickets/{uid}/{ticketId}.jpg ──────────────────────────────────────────
+    // Write: only the file owner (ticket creator)
+    // Read:  any authenticated user (managers, contractors need to see photos)
+    match /tickets/{uid}/{ticketId} {
+      allow read:  if isAuth();
+      allow write: if isOwner(uid);
+    }
+
+    // ── tickets/{uid}/{ticketId}/docs/{filename} ──────────────────────────────
+    match /tickets/{uid}/{ticketId}/docs/{filename} {
+      allow read:  if isAuth();
+      allow write: if isOwner(uid);
+    }
+  }
+}
