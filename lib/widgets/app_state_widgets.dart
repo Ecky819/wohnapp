@@ -1,5 +1,109 @@
 import 'package:flutter/material.dart';
 
+// ─── Skeleton loader ──────────────────────────────────────────────────────────
+
+/// A single shimmering placeholder card that mimics a ticket list item.
+class TicketSkeletonCard extends StatefulWidget {
+  const TicketSkeletonCard({super.key});
+
+  @override
+  State<TicketSkeletonCard> createState() => _TicketSkeletonCardState();
+}
+
+class _TicketSkeletonCardState extends State<TicketSkeletonCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+    _anim = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final base = Theme.of(context).colorScheme.surfaceContainerHighest;
+    final highlight = Theme.of(context).colorScheme.surfaceContainerHigh;
+
+    return AnimatedBuilder(
+      animation: _anim,
+      builder: (_, __) {
+        final color = Color.lerp(base, highlight, _anim.value)!;
+        return Card(
+          margin: const EdgeInsets.only(bottom: 10),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                // thumbnail placeholder
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(width: 48, height: 48, color: color),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                          height: 13,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(4))),
+                      const SizedBox(height: 6),
+                      Container(
+                          height: 10,
+                          width: 160,
+                          decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(4))),
+                      const SizedBox(height: 6),
+                      Container(
+                          height: 18,
+                          width: 72,
+                          decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(9))),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Shows [count] skeleton cards while data is loading.
+class TicketSkeletonList extends StatelessWidget {
+  const TicketSkeletonList({super.key, this.count = 6});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: count,
+      itemBuilder: (_, __) => const TicketSkeletonCard(),
+    );
+  }
+}
+
 /// A status badge that adapts its background to the current theme brightness.
 ///
 /// Uses [Color.alphaBlend] with [ColorScheme.surface] so the tinted background

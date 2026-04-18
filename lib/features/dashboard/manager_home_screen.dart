@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +7,9 @@ import 'package:go_router/go_router.dart';
 import '../../models/app_user.dart';
 import '../../models/ticket.dart';
 import '../../repositories/activity_repository.dart';
+import '../../models/device.dart';
+import '../../repositories/device_repository.dart';
+import '../../repositories/invoice_repository.dart';
 import '../../repositories/ticket_repository.dart';
 import '../../router.dart';
 import '../../ticket_provider.dart';
@@ -139,15 +143,31 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
               icon: const Icon(Icons.add),
               label: const Text('Ticket anlegen'),
               onPressed: () =>
-                  context.push('/manager/${AppRoutes.managerCreateTicket}'),
+                  context
+                      .push('/manager/${AppRoutes.managerCreateTicket}')
+                      .then((created) {
+                    if (created == true && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Ticket erfolgreich angelegt'),
+                          duration: Duration(seconds: 3),
+                        ),
+                      );
+                      _refresh();
+                    }
+                  }),
             ),
       body: Column(
         children: [
-          if (!_searchActive)
+          if (!_searchActive) ...[
+            _MaintenanceBanner(
+              onTap: () => context.push(AppRoutes.buildings),
+            ),
             _FilterBar(
               selected: _statusFilter,
               onSelected: _applyFilter,
             ),
+          ],
           Expanded(child: _searchActive ? _buildSearchResults() : _buildBody()),
         ],
       ),
@@ -158,45 +178,115 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
     return AppBar(
       title: const Text('Ticket-Board'),
       actions: [
+        // Suche — immer sichtbar
         IconButton(
           icon: const Icon(Icons.search),
           tooltip: 'Suchen',
           onPressed: _activateSearch,
         ),
-        IconButton(
-          icon: const Icon(Icons.bar_chart_outlined),
-          tooltip: 'Analytics',
-          onPressed: () => context.push(AppRoutes.analytics),
+        // Rechnungen — Badge sichtbar lassen
+        _PendingInvoiceButton(
+          onTap: () => context.push(AppRoutes.export),
         ),
-        IconButton(
-          icon: const Icon(Icons.calendar_month_outlined),
-          tooltip: 'Kalender',
-          onPressed: () => context.push(AppRoutes.calendar),
-        ),
-        IconButton(
-          icon: const Icon(Icons.download_outlined),
-          tooltip: 'Export',
-          onPressed: () => context.push(AppRoutes.export),
-        ),
-        IconButton(
-          icon: const Icon(Icons.people_outline),
-          tooltip: 'Mieter',
-          onPressed: () => context.push(AppRoutes.tenants),
-        ),
-        IconButton(
-          icon: const Icon(Icons.location_city_outlined),
-          tooltip: 'Gebäude',
-          onPressed: () => context.push(AppRoutes.buildings),
-        ),
-        IconButton(
-          icon: const Icon(Icons.mail_outline),
-          tooltip: 'Einladungen',
-          onPressed: () => context.push('/manager/${AppRoutes.invitations}'),
-        ),
-        IconButton(
-          icon: const Icon(Icons.account_circle_outlined),
-          tooltip: 'Profil',
-          onPressed: () => context.push(AppRoutes.profile),
+        // Alles weitere im Overflow-Menü
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert),
+          tooltip: 'Mehr',
+          onSelected: (value) {
+            switch (value) {
+              case 'analytics':
+                context.push(AppRoutes.analytics);
+              case 'calendar':
+                context.push(AppRoutes.calendar);
+              case 'export':
+                context.push(AppRoutes.export);
+              case 'tenants':
+                context.push(AppRoutes.tenants);
+              case 'buildings':
+                context.push(AppRoutes.buildings);
+              case 'invitations':
+                context.push('/manager/${AppRoutes.invitations}');
+              case 'tenantSettings':
+                context.push(AppRoutes.tenantSettings);
+              case 'profile':
+                context.push(AppRoutes.profile);
+            }
+          },
+          itemBuilder: (_) => const [
+            PopupMenuItem(
+              value: 'analytics',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.bar_chart_outlined),
+                title: Text('Analytics'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuItem(
+              value: 'calendar',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.calendar_month_outlined),
+                title: Text('Kalender'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuItem(
+              value: 'export',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.download_outlined),
+                title: Text('Export / DATEV'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuItem(
+              value: 'buildings',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.location_city_outlined),
+                title: Text('Gebäude'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuItem(
+              value: 'tenants',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.people_outline),
+                title: Text('Mieter'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuItem(
+              value: 'invitations',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.mail_outline),
+                title: Text('Einladungen'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuItem(
+              value: 'tenantSettings',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.domain_outlined),
+                title: Text('Mandanten-Einstellungen'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuDivider(),
+            PopupMenuItem(
+              value: 'profile',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.account_circle_outlined),
+                title: Text('Profil'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -278,6 +368,11 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
   Widget _buildBody() {
     if (_error != null && _tickets.isEmpty) {
       return ErrorState(message: _error!, onRetry: _refresh);
+    }
+
+    // First load: show skeleton instead of blank screen
+    if (_tickets.isEmpty && _isLoading) {
+      return const TicketSkeletonList();
     }
 
     if (_tickets.isEmpty && !_isLoading) {
@@ -375,11 +470,19 @@ class _TicketCard extends StatelessWidget {
         leading: ticket.imageUrl != null
             ? ClipRRect(
                 borderRadius: BorderRadius.circular(6),
-                child: Image.network(
-                  ticket.imageUrl!,
+                child: CachedNetworkImage(
+                  imageUrl: ticket.imageUrl!,
                   width: 48,
                   height: 48,
                   fit: BoxFit.cover,
+                  placeholder: (_, __) => const SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 1.5)),
+                  ),
+                  errorWidget: (_, __, ___) =>
+                      const Icon(Icons.broken_image_outlined, size: 36),
                 ),
               )
             : const Icon(Icons.report_problem_outlined, size: 36),
@@ -558,6 +661,97 @@ class _ContractorTile extends StatelessWidget {
           ? const Icon(Icons.check_circle, color: Colors.green)
           : null,
       onTap: onTap,
+    );
+  }
+}
+
+// ─── Maintenance banner ───────────────────────────────────────────────────────
+
+class _MaintenanceBanner extends ConsumerWidget {
+  const _MaintenanceBanner({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tenantId =
+        ref.watch(currentUserProvider).valueOrNull?.tenantId ?? '';
+    if (tenantId.isEmpty) return const SizedBox.shrink();
+
+    final alertsAsync = ref.watch(maintenanceAlertsProvider(tenantId));
+
+    return alertsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (devices) {
+        if (devices.isEmpty) return const SizedBox.shrink();
+
+        final overdueCount = devices
+            .where((d) => d.maintenanceStatus == MaintenanceStatus.overdue)
+            .length;
+        final hasOverdue = overdueCount > 0;
+        final color = hasOverdue ? Colors.red : Colors.orange;
+        final label = hasOverdue
+            ? '$overdueCount Gerät${overdueCount != 1 ? 'e' : ''} überfällig'
+            : '${devices.length} Gerät${devices.length != 1 ? 'e' : ''} bald fällig';
+
+        return GestureDetector(
+          onTap: onTap,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Color.alphaBlend(
+                  color.withValues(alpha: 0.1),
+                  Theme.of(context).colorScheme.surface),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: color.withValues(alpha: 0.4)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.warning_amber_outlined, color: color, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Wartung: $label',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: color),
+                  ),
+                ),
+                Icon(Icons.chevron_right, color: color, size: 18),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─── Pending invoice badge button ─────────────────────────────────────────────
+
+class _PendingInvoiceButton extends ConsumerWidget {
+  const _PendingInvoiceButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tenantId =
+        ref.watch(currentUserProvider).valueOrNull?.tenantId ?? '';
+    if (tenantId.isEmpty) return const SizedBox.shrink();
+
+    final pendingAsync = ref.watch(pendingInvoicesProvider(tenantId));
+    final count = pendingAsync.valueOrNull?.length ?? 0;
+
+    return IconButton(
+      tooltip: 'Offene Rechnungen',
+      icon: Badge(
+        isLabelVisible: count > 0,
+        label: Text('$count'),
+        child: const Icon(Icons.receipt_long_outlined),
+      ),
+      onPressed: onTap,
     );
   }
 }

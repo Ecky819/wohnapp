@@ -6,9 +6,9 @@ import 'repositories/user_repository.dart';
 
 export 'repositories/user_repository.dart' show userRepositoryProvider;
 
-final currentUserProvider = FutureProvider<AppUser?>((ref) async {
-  final firebaseUser = FirebaseAuth.instance.currentUser;
-  if (firebaseUser == null) return null;
-
-  return ref.read(userRepositoryProvider).getOrCreate(firebaseUser);
+final currentUserProvider = StreamProvider<AppUser?>((ref) {
+  return FirebaseAuth.instance.authStateChanges().asyncMap((firebaseUser) async {
+    if (firebaseUser == null) return null;
+    return ref.read(userRepositoryProvider).getOrCreate(firebaseUser);
+  });
 });

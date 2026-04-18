@@ -1,9 +1,14 @@
+import Anthropic from "@anthropic-ai/sdk";
 import * as admin from "firebase-admin";
 import {
   onDocumentCreated,
   onDocumentUpdated,
 } from "firebase-functions/v2/firestore";
+import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions";
+
+const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
 
 admin.initializeApp();
 
@@ -256,3 +261,226 @@ export const onTicketStatusChanged = onDocumentUpdated(
   }
 );
 
+// ─── Callable: analyzeTicket (KI Routing) ────────────────────────────────────
+
+/**
+ * Analysiert einen Ticket-Text (+ optionale Bild-URL) mit Claude Haiku und gibt
+ * strukturierte Routing-Informationen zurück:
+ * - ticketCategory: 'damage' | 'maintenance'
+ * - tradeCategory:  'plumbing' | 'electrical' | 'heating' | 'general'
+ * - priority:       'normal' | 'high'
+ * - reasoning:      kurze Begründung auf Deutsch
+ * - confidence:     0.0 – 1.0
+ */
+export const analyzeTicket = onCall(
+  {
+    region: "europe-west3",
+    secrets: [anthropicApiKey],
+    timeoutSeconds: 30,
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Nicht angemeldet.");
+    }
+
+    const { title, description, imageUrl } = request.data as {
+      title: string;
+      description: string;
+      imageUrl?: string;
+    };
+
+    if (!title && !description) {
+      throw new HttpsError("invalid-argument", "Titel oder Beschreibung fehlt.");
+    }
+
+    const client = new Anthropic({ apiKey: anthropicApiKey.value() });
+
+    // Build message content — add image if provided
+    type ContentBlock =
+      | { type: "text"; text: string }
+      | { type: "image"; source: { type: "url"; url: string } };
+
+    const content: ContentBlock[] = [];
+
+    if (imageUrl) {
+      content.push({
+        type: "image",
+        source: { type: "url", url: imageUrl },
+      });
+    }
+
+    content.push({
+      type: "text",
+      text: `Du bist ein Experte für Wohnungsverwaltung. Analysiere folgende Schadensmeldung und antworte NUR mit validem JSON.
+
+Titel: ${title}
+Beschreibung: ${description}
+
+Gib folgende Felder zurück:
+{
+  "ticketCategory": "damage" oder "maintenance",
+  "tradeCategory": "plumbing", "electrical", "heating" oder "general",
+  "priority": "normal" oder "high",
+  "reasoning": "Kurze Begründung auf Deutsch (max. 15 Wörter)",
+  "confidence": Zahl zwischen 0.0 und 1.0
+}
+
+Regeln:
+- priority = "high" bei: Wasserausbruch, Stromausfall, Gasgeruch, Sicherheitsrisiko, bewohnte Wohnung unbenutzbar
+- ticketCategory = "maintenance" bei geplanten Wartungen, Inspektionen, Routinearbeiten
+- tradeCategory nach Gewerk: Sanitär→plumbing, Elektro→electrical, Heizung→heating, alles andere→general
+- confidence niedrig wenn Beschreibung unklar`,
+    });
+
+    try {
+      const response = await client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 256,
+        messages: [{ role: "user", content }],
+      });
+
+      const text =
+        response.content[0].type === "text" ? response.content[0].text : "";
+
+      // Extract JSON (Claude sometimes wraps it in markdown)
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new HttpsError("internal", "KI-Antwort konnte nicht geparst werden.");
+      }
+
+      const result = JSON.parse(jsonMatch[0]) as {
+        ticketCategory: string;
+        tradeCategory: string;
+        priority: string;
+        reasoning: string;
+        confidence: number;
+      };
+
+      logger.info("analyzeTicket result", { title, result });
+      return result;
+    } catch (err) {
+      logger.error("analyzeTicket failed", err);
+      if (err instanceof HttpsError) throw err;
+      throw new HttpsError("internal", "KI-Analyse fehlgeschlagen.");
+    }
+  }
+);
+
+// ─── Callable: analyzeInvoice (KI-Rechnungsprüfung) ──────────────────────────
+
+/**
+ * Prüft eine eingereichte Handwerker-Rechnung auf Plausibilität.
+ * Gibt zurück:
+ * - verdict:      'ok' | 'suspicious' | 'overpriced'
+ * - reasoning:    Begründung auf Deutsch
+ * - suggestedMin: untere Preisgrenze für diesen Auftragstyp (€)
+ * - suggestedMax: obere Preisgrenze (€)
+ * - flags:        Liste konkreter Auffälligkeiten (leer wenn ok)
+ * - confidence:   0.0 – 1.0
+ */
+export const analyzeInvoice = onCall(
+  {
+    region: "europe-west3",
+    secrets: [anthropicApiKey],
+    timeoutSeconds: 30,
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Nicht angemeldet.");
+    }
+
+    const { ticketTitle, ticketCategory, tradeCategory, contractorName, amount, positions } =
+      request.data as {
+        ticketTitle: string;
+        ticketCategory: string;
+        tradeCategory: string;
+        contractorName: string;
+        amount: number;
+        positions: Array<{ description: string; amount: number }>;
+      };
+
+    if (!ticketTitle || amount == null) {
+      throw new HttpsError("invalid-argument", "Pflichtfelder fehlen.");
+    }
+
+    const client = new Anthropic({ apiKey: anthropicApiKey.value() });
+
+    const tradeLabelMap: Record<string, string> = {
+      plumbing: "Sanitär / Klempner",
+      electrical: "Elektro",
+      heating: "Heizung / HLS",
+      general: "Allgemeines Handwerk",
+    };
+    const tradeLabel = tradeLabelMap[tradeCategory] ?? tradeCategory;
+
+    const positionLines =
+      positions.length > 0
+        ? positions.map((p) => `  - ${p.description}: ${p.amount.toFixed(2)} €`).join("\n")
+        : "  (keine einzelnen Positionen angegeben)";
+
+    const prompt = `Du bist ein Sachverständiger für Handwerkerleistungen in Deutschland. Prüfe folgende Rechnung auf Plausibilität.
+
+Auftrag: ${ticketTitle}
+Kategorie: ${ticketCategory === "maintenance" ? "Wartung/Inspektion" : "Schadensbehebung"}
+Gewerk: ${tradeLabel}
+Auftragnehmer: ${contractorName}
+Gesamtbetrag: ${amount.toFixed(2)} €
+Positionen:
+${positionLines}
+
+Typische Marktpreise Deutschland 2024 (netto):
+- Elektro: 65–95 €/Std, Kleinreparatur 120–350 €, mittlere Arbeit 350–1.200 €
+- Sanitär: 70–100 €/Std, Kleinreparatur 150–400 €, mittlere Arbeit 400–1.500 €
+- Heizung/HLS: 80–120 €/Std, Wartung 100–250 €, Reparatur 300–2.000 €
+- Allgemein: 50–80 €/Std, Kleinreparatur 100–300 €, mittlere Arbeit 300–1.000 €
+Material: typisch 30–50 % des Arbeitspreises, bei Teileersatz bis 70 %.
+
+Antworte NUR mit validem JSON:
+{
+  "verdict": "ok" | "suspicious" | "overpriced",
+  "reasoning": "Begründung auf Deutsch (max. 30 Wörter)",
+  "suggestedMin": Zahl (€, plausible Untergrenze für diesen Auftrag),
+  "suggestedMax": Zahl (€, plausible Obergrenze),
+  "flags": ["Auffälligkeit 1", ...] oder [],
+  "confidence": Zahl 0.0–1.0
+}
+
+Regeln:
+- "ok": Betrag liegt innerhalb der plausiblen Spanne, keine auffälligen Positionen
+- "suspicious": einzelne Positionen wirken überhöht oder fehlen Detailangaben bei hohem Betrag
+- "overpriced": Gesamtbetrag übersteigt die plausible Spanne deutlich (>40 %)
+- confidence niedrig wenn zu wenig Kontext vorhanden`;
+
+    try {
+      const response = await client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 300,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const text =
+        response.content[0].type === "text" ? response.content[0].text : "";
+
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new HttpsError("internal", "KI-Antwort konnte nicht geparst werden.");
+      }
+
+      const result = JSON.parse(jsonMatch[0]) as {
+        verdict: string;
+        reasoning: string;
+        suggestedMin: number;
+        suggestedMax: number;
+        flags: string[];
+        confidence: number;
+      };
+
+      logger.info("analyzeInvoice result", { ticketTitle, amount, result });
+      return result;
+    } catch (err) {
+      logger.error("analyzeInvoice failed", err);
+      if (err instanceof HttpsError) throw err;
+      throw new HttpsError("internal", "KI-Rechnungsprüfung fehlgeschlagen.");
+    }
+  }
+);

@@ -4,14 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/app_user.dart';
 import 'models/ticket.dart';
 import 'repositories/ticket_repository.dart';
-import 'repositories/user_repository.dart';
+import 'user_provider.dart';
 
 export 'repositories/ticket_repository.dart' show ticketRepositoryProvider;
 
 // ─── Manager ────────────────────────────────────────────────────────────────
 
 final allTicketsProvider = StreamProvider<List<Ticket>>((ref) {
-  return ref.watch(ticketRepositoryProvider).watchAll().map(
+  final tenantId = ref.watch(currentUserProvider).valueOrNull?.tenantId ?? '';
+  return ref.watch(ticketRepositoryProvider).watchAll(tenantId: tenantId).map(
         (list) => list.where((t) => !t.archived).toList(),
       );
 });

@@ -23,9 +23,14 @@ class TicketRepository {
 
   // ─── Streams ───────────────────────────────────────────────────────────────
 
-  Stream<List<Ticket>> watchAll() {
+  /// Used for full-text search in the manager board. Capped at 500 to avoid
+  /// unbounded reads — the paginated [fetchManagerPage] is used for the main list.
+  Stream<List<Ticket>> watchAll({required String tenantId, int limit = 500}) {
+    if (tenantId.isEmpty) return const Stream.empty();
     return _tickets
+        .where('tenantId', isEqualTo: tenantId)
         .orderBy('createdAt', descending: true)
+        .limit(limit)
         .snapshots()
         .map((s) => s.docs.map(Ticket.fromDoc).toList());
   }
@@ -162,8 +167,10 @@ class TicketRepository {
     List<File> images = const [],
     List<PlatformFile> documents = const [],
     ActivityRepository? activityRepo,
+    /// Override the creator UID — used for anonymous guest reports.
+    String? guestUid,
   }) async {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+    final uid = guestUid ?? FirebaseAuth.instance.currentUser!.uid;
     final ref = _tickets.doc();
 
     await ref.set({
@@ -313,6 +320,61 @@ class TicketRepository {
         ticketId: ticketId,
         type: ActivityType.assigned,
         detail: 'Zugewiesen an $contractorName',
+      );
+    }
+  }
+
+  /// Contractor accepts their assignment: status → in_progress.
+  Future<void> acceptAssignment(
+    String ticketId, {
+    ActivityRepository? activityRepo,
+  }) async {
+    await _tickets.doc(ticketId).update({'status': 'in_progress'});
+    if (activityRepo != null) {
+      await activityRepo.log(
+        ticketId: ticketId,
+        type: ActivityType.statusChanged,
+        detail: 'Offen → In Bearbeitung (Auftrag angenommen)',
+      );
+    }
+  }
+
+  /// Contractor declines their assignment: clears assignedTo/Name, status stays open.
+  Future<void> declineAssignment(
+    String ticketId, {
+    ActivityRepository? activityRepo,
+  }) async {
+    await _tickets.doc(ticketId).update({
+      'assignedTo': FieldValue.delete(),
+      'assignedToName': FieldValue.delete(),
+    });
+    if (activityRepo != null) {
+      await activityRepo.log(
+        ticketId: ticketId,
+        type: ActivityType.assigned,
+        detail: 'Zuweisung abgelehnt',
+      );
+    }
+  }
+
+  /// Contractor sets or updates the appointment date.
+  Future<void> setAppointment(
+    String ticketId,
+    DateTime scheduledAt, {
+    ActivityRepository? activityRepo,
+  }) async {
+    await _tickets.doc(ticketId).update({
+      'scheduledAt': Timestamp.fromDate(scheduledAt),
+    });
+    if (activityRepo != null) {
+      final label =
+          '${scheduledAt.day.toString().padLeft(2, '0')}.'
+          '${scheduledAt.month.toString().padLeft(2, '0')}.'
+          '${scheduledAt.year}';
+      await activityRepo.log(
+        ticketId: ticketId,
+        type: ActivityType.updated,
+        detail: 'Termin festgelegt: $label',
       );
     }
   }

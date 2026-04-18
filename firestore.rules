@@ -62,7 +62,7 @@ service cloud.firestore {
     // ─── tickets/{ticketId} ────────────────────────────────────────────────────
 
     match /tickets/{ticketId} {
-      // Manager: alle Tickets des eigenen Tenants
+      // Manager: alle Tickets des eigenen Tenants (inkl. anonyme Gast-Meldungen)
       allow read: if isManager() && sameTenant(resource.data);
 
       // Mieter: nur eigene Tickets
@@ -79,6 +79,16 @@ service cloud.firestore {
         request.resource.data.tenantId == userTenantId() &&
         request.resource.data.status == 'open';
 
+      // Gastzugang: Anonyme Nutzer dürfen Tickets erstellen (QR-Code-Flow).
+      // tenantId + unitId kommen aus dem QR-Code und werden serverseitig nicht
+      // validiert — der Manager sieht alle eingehenden anonymen Tickets.
+      allow create: if isAuth() &&
+        request.auth.token.firebase.sign_in_provider == 'anonymous' &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.status == 'open' &&
+        request.resource.data.tenantId is string &&
+        request.resource.data.tenantId.size() > 0;
+
       // Manager darf Tickets erstellen (z.B. Wartungstickets)
       allow create: if isManager() &&
         request.resource.data.tenantId == userTenantId();
@@ -86,18 +96,24 @@ service cloud.firestore {
       // Manager darf alles im Ticket ändern (Status, Zuweisung etc.)
       allow update: if isManager() && sameTenant(resource.data);
 
-      // Handwerker darf nur Status ändern (nichts anderes)
+      // Handwerker darf Status, Termin und Zuweisung (Ablehnen) ändern
       allow update: if isContractor() &&
         resource.data.assignedTo == request.auth.uid &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'scheduledAt', 'assignedTo', 'assignedToName']);
 
       // Niemand darf Tickets löschen (Audit-Trail)
       allow delete: if false;
 
       // ── tickets/{ticketId}/comments/{commentId} ──────────────────────────
       match /comments/{commentId} {
-        // Alle Beteiligten dürfen Kommentare lesen (Manager, Handwerker, Ersteller)
-        allow read: if isAuth();
+        // Nur Ticket-Beteiligte dürfen Kommentare lesen (Manager, zugewiesener
+        // Handwerker, Ticket-Ersteller) — kein allgemeiner isAuth()-Zugriff
+        allow read: if isAuth() && (
+          isManager() ||
+          get(/databases/$(database)/documents/tickets/$(ticketId)).data.assignedTo == request.auth.uid ||
+          get(/databases/$(database)/documents/tickets/$(ticketId)).data.createdBy  == request.auth.uid
+        );
 
         // Jeder eingeloggte User darf Kommentare hinzufügen
         allow create: if isAuth() &&
@@ -154,8 +170,13 @@ service cloud.firestore {
 
       // ── units/{unitId}/devices/{deviceId} ────────────────────────────────
       match /devices/{deviceId} {
-        // Alle eingeloggten User dürfen Geräte lesen (Tenant geprüft via Parent)
-        allow read: if isAuth();
+        // Alle eingeloggten User desselben Tenants dürfen Geräte lesen
+        // (tenantId im Dokument gespeichert — funktioniert auch bei collectionGroup)
+        allow read: if isAuth() && (
+          resource.data.tenantId == userTenantId() ||
+          // Fallback für ältere Dokumente ohne tenantId-Feld
+          !('tenantId' in resource.data)
+        );
 
         // Nur Manager dürfen Geräte anlegen, bearbeiten, löschen
         allow create, update, delete: if isManager();
@@ -178,6 +199,52 @@ service cloud.firestore {
         // Registrierung: nur used/usedAt darf gesetzt werden
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used', 'usedAt'])
       );
+
+      allow delete: if false;
+    }
+
+    // ─── invoices/{invoiceId} ─────────────────────────────────────────────────
+
+    match /invoices/{invoiceId} {
+      // Manager darf alle Rechnungen des eigenen Tenants lesen
+      allow read: if isManager() && resource.data.tenantId == userTenantId();
+
+      // Handwerker darf nur eigene Rechnungen lesen
+      allow read: if isContractor() &&
+        resource.data.contractorId == request.auth.uid;
+
+      // Handwerker darf Rechnungen anlegen (nur für sich selbst)
+      allow create: if isContractor() &&
+        request.resource.data.contractorId == request.auth.uid &&
+        request.resource.data.tenantId == userTenantId() &&
+        request.resource.data.status == 'pending';
+
+      // Handwerker darf pdfUrl nachtragen (nach Upload)
+      allow update: if isContractor() &&
+        resource.data.contractorId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pdfUrl']);
+
+      // Manager darf Status und rejectionReason setzen
+      allow update: if isManager() &&
+        resource.data.tenantId == userTenantId() &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['status', 'rejectionReason', 'approvedAt']);
+
+      allow delete: if false;
+    }
+
+    // ─── tenants/{tenantId} ───────────────────────────────────────────────────
+
+    match /tenants/{tenantId} {
+      // Manager darf das eigene Tenant-Dokument lesen
+      allow read: if isManager() && tenantId == userTenantId();
+
+      // Alle eingeloggten User desselben Tenants dürfen Branding lesen
+      // (für dynamisches Theming in der App)
+      allow read: if isAuth() && tenantId == userTenantId();
+
+      // Nur Manager dürfen Tenant-Einstellungen anlegen / ändern
+      allow create, update: if isManager() && tenantId == userTenantId();
 
       allow delete: if false;
     }

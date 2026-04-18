@@ -15,6 +15,7 @@ import '../../repositories/ticket_repository.dart';
 import '../../router.dart';
 import '../../user_provider.dart';
 import '../../widgets/app_state_widgets.dart';
+import 'unit_qr_code_screen.dart';
 
 // ─── Providers ────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,17 @@ class _UnitDetailBody extends ConsumerWidget {
                         ),
                       ),
                     ),
+                    if (isManager)
+                      IconButton(
+                        icon: const Icon(Icons.qr_code_2_outlined),
+                        tooltip: 'QR-Code',
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => UnitQrCodeScreen(unit: unit),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
                 const Divider(height: 24),
@@ -154,6 +166,11 @@ class _UnitDetailBody extends ConsumerWidget {
 
         // ── Tenant assignment (manager only) ──────────────────────────
         if (isManager) _TenantAssignmentCard(unit: unit),
+
+        const SizedBox(height: 20),
+
+        // ── Maintenance alerts ────────────────────────────────────────
+        _MaintenanceAlertsCard(devices: devicesAsync.valueOrNull ?? []),
 
         const SizedBox(height: 20),
 
@@ -410,6 +427,88 @@ class _AssignTenantSheetState extends State<_AssignTenantSheet> {
   }
 }
 
+// ─── Maintenance alerts card ──────────────────────────────────────────────────
+
+class _MaintenanceAlertsCard extends StatelessWidget {
+  const _MaintenanceAlertsCard({required this.devices});
+  final List<Device> devices;
+
+  @override
+  Widget build(BuildContext context) {
+    final alerts = devices
+        .where((d) =>
+            d.maintenanceStatus == MaintenanceStatus.overdue ||
+            d.maintenanceStatus == MaintenanceStatus.dueSoon)
+        .toList()
+      ..sort((a, b) {
+        final aDate = a.nextServiceDue ?? DateTime(9999);
+        final bDate = b.nextServiceDue ?? DateTime(9999);
+        return aDate.compareTo(bDate);
+      });
+
+    if (alerts.isEmpty) return const SizedBox.shrink();
+
+    final hasOverdue =
+        alerts.any((d) => d.maintenanceStatus == MaintenanceStatus.overdue);
+    final color = hasOverdue ? Colors.red : Colors.orange;
+    final df = DateFormat('dd.MM.yyyy');
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+            color.withValues(alpha: 0.08),
+            Theme.of(context).colorScheme.surface),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.warning_amber_outlined, color: color, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                hasOverdue ? 'Wartung überfällig' : 'Wartung bald fällig',
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: color),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...alerts.map((d) {
+            final isOverdue = d.maintenanceStatus == MaintenanceStatus.overdue;
+            final dueColor = isOverdue ? Colors.red : Colors.orange;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  Icon(d.category.icon, size: 16, color: dueColor),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(d.name,
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w500)),
+                  ),
+                  Text(
+                    d.nextServiceDue != null
+                        ? df.format(d.nextServiceDue!)
+                        : '–',
+                    style: TextStyle(fontSize: 12, color: dueColor),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Device tile ──────────────────────────────────────────────────────────────
 
 class _DeviceTile extends ConsumerWidget {
@@ -455,6 +554,7 @@ class _DeviceTile extends ConsumerWidget {
                 'Letzte Wartung: ${df.format(device.lastServiceAt!)}',
                 style: const TextStyle(fontSize: 11, color: Colors.grey),
               ),
+            _MaintenanceChip(device: device),
             if (device.warrantyUntil != null)
               _WarrantyChip(until: device.warrantyUntil!),
           ],
@@ -474,9 +574,31 @@ class _DeviceTile extends ConsumerWidget {
                       );
                     }
                   } else if (v == 'delete') {
-                    await ref
-                        .read(deviceRepositoryProvider)
-                        .deleteDevice(unitId, device.id);
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        title: const Text('Gerät löschen?'),
+                        content: Text(
+                          '„${device.name}" wird unwiderruflich entfernt.'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Abbrechen'),
+                          ),
+                          FilledButton(
+                            style: FilledButton.styleFrom(
+                                backgroundColor: Colors.red),
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Löschen'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true) {
+                      await ref
+                          .read(deviceRepositoryProvider)
+                          .deleteDevice(unitId, device.id);
+                    }
                   }
                 },
                 itemBuilder: (_) => [
@@ -504,6 +626,43 @@ class _DeviceTile extends ConsumerWidget {
                 ],
               )
             : null,
+      ),
+    );
+  }
+}
+
+class _MaintenanceChip extends StatelessWidget {
+  const _MaintenanceChip({required this.device});
+  final Device device;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = device.maintenanceStatus;
+    if (status == MaintenanceStatus.ok) return const SizedBox.shrink();
+
+    final (color, icon) = switch (status) {
+      MaintenanceStatus.overdue => (Colors.red, Icons.warning_outlined),
+      MaintenanceStatus.dueSoon => (Colors.orange, Icons.schedule_outlined),
+      MaintenanceStatus.unknown => (Colors.grey, Icons.help_outline),
+      _ => (Colors.grey, Icons.help_outline),
+    };
+
+    final df = DateFormat('dd.MM.yy');
+    final dueLabel = device.nextServiceDue != null
+        ? df.format(device.nextServiceDue!)
+        : 'unbekannt';
+    final text = status == MaintenanceStatus.unknown
+        ? 'Keine Wartung erfasst'
+        : '${status.label}: $dueLabel';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Row(
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(text, style: TextStyle(fontSize: 11, color: color)),
+        ],
       ),
     );
   }
@@ -610,6 +769,7 @@ class _AddDeviceSheetState extends ConsumerState<_AddDeviceSheet> {
   final _nameController = TextEditingController();
   final _manufacturerController = TextEditingController();
   DeviceCategory _category = DeviceCategory.general;
+  int? _serviceIntervalMonths; // null = use category default
   bool _isLoading = false;
 
   @override
@@ -624,15 +784,17 @@ class _AddDeviceSheetState extends ConsumerState<_AddDeviceSheet> {
     if (name.isEmpty) return;
     setState(() => _isLoading = true);
 
-    await ref
-        .read(deviceRepositoryProvider)
-        .createDevice(
+    final user = ref.read(currentUserProvider).valueOrNull;
+
+    await ref.read(deviceRepositoryProvider).createDevice(
           unitId: widget.unitId,
           name: name,
           category: _category,
+          tenantId: user?.tenantId,
           manufacturer: _manufacturerController.text.trim().isEmpty
               ? null
               : _manufacturerController.text.trim(),
+          serviceIntervalMonths: _serviceIntervalMonths,
         );
 
     if (mounted) Navigator.pop(context);
@@ -640,6 +802,9 @@ class _AddDeviceSheetState extends ConsumerState<_AddDeviceSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveInterval =
+        _serviceIntervalMonths ?? _category.defaultIntervalMonths;
+
     return Padding(
       padding: EdgeInsets.only(
         left: 20,
@@ -657,10 +822,8 @@ class _AddDeviceSheetState extends ConsumerState<_AddDeviceSheet> {
           ),
           const SizedBox(height: 16),
 
-          const Text(
-            'Kategorie',
-            style: TextStyle(fontWeight: FontWeight.w600),
-          ),
+          const Text('Kategorie',
+              style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           SegmentedButton<DeviceCategory>(
             showSelectedIcon: false,
@@ -674,7 +837,10 @@ class _AddDeviceSheetState extends ConsumerState<_AddDeviceSheet> {
                 )
                 .toList(),
             selected: {_category},
-            onSelectionChanged: (s) => setState(() => _category = s.first),
+            onSelectionChanged: (s) => setState(() {
+              _category = s.first;
+              _serviceIntervalMonths = null; // reset to new category default
+            }),
           ),
 
           const SizedBox(height: 14),
@@ -693,6 +859,27 @@ class _AddDeviceSheetState extends ConsumerState<_AddDeviceSheet> {
               labelText: 'Hersteller (optional)',
               border: OutlineInputBorder(),
             ),
+          ),
+
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              const Text('Wartungsintervall',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const Spacer(),
+              DropdownButton<int>(
+                value: effectiveInterval,
+                underline: const SizedBox.shrink(),
+                items: const [
+                  DropdownMenuItem(value: 6, child: Text('6 Monate')),
+                  DropdownMenuItem(value: 12, child: Text('12 Monate')),
+                  DropdownMenuItem(value: 24, child: Text('24 Monate')),
+                  DropdownMenuItem(value: 36, child: Text('36 Monate')),
+                ],
+                onChanged: (v) =>
+                    setState(() => _serviceIntervalMonths = v),
+              ),
+            ],
           ),
 
           const SizedBox(height: 20),

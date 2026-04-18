@@ -10,6 +10,7 @@ import '../../router.dart';
 import '../../ticket_provider.dart';
 import '../../user_provider.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../auth/qr_scanner_screen.dart';
 
 class TenantHomeScreen extends ConsumerWidget {
   const TenantHomeScreen({super.key});
@@ -23,6 +24,30 @@ class TenantHomeScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Mieter Dashboard'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner_outlined),
+            tooltip: 'QR-Code scannen',
+            onPressed: () async {
+              final result = await Navigator.push<String>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const QrScannerScreen(),
+                ),
+              );
+              if (result == null || !context.mounted) return;
+              final uri = Uri.tryParse(result);
+              if (uri == null) return;
+              // Handle wohnapp://report?unitId=...&tenantId=...&unitName=...
+              if (uri.scheme == 'wohnapp' && uri.host == 'report') {
+                context.push(AppRoutes.guestReportPath(
+                  unitId: uri.queryParameters['unitId'] ?? '',
+                  tenantId: uri.queryParameters['tenantId'] ?? '',
+                  unitName: Uri.decodeComponent(
+                      uri.queryParameters['unitName'] ?? ''),
+                ));
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.calendar_month_outlined),
             tooltip: 'Wartungskalender',
@@ -57,8 +82,18 @@ class TenantHomeScreen extends ConsumerWidget {
                 child: FilledButton.icon(
                   icon: const Icon(Icons.report_problem_outlined),
                   label: const Text('Schaden melden'),
-                  onPressed: () => context.push(
-                      '${AppRoutes.tenant}/${AppRoutes.createTicket}'),
+                  onPressed: () => context
+                      .push('${AppRoutes.tenant}/${AppRoutes.createTicket}')
+                      .then((created) {
+                    if (created == true && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Ticket erfolgreich angelegt'),
+                          duration: Duration(seconds: 3),
+                        ),
+                      );
+                    }
+                  }),
                 ),
               ),
               const SizedBox(width: 12),

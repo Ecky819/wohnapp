@@ -13,7 +13,10 @@ import 'features/dashboard/tenant_home_screen.dart';
 import 'features/digital_twin/buildings_screen.dart';
 import 'features/digital_twin/unit_detail_screen.dart';
 import 'features/invitations/invitations_screen.dart';
+import 'features/invoices/invoice_detail_screen.dart';
+import 'features/tickets/guest_report_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/settings/tenant_settings_screen.dart';
 import 'features/reporting/export_screen.dart';
 import 'features/tickets/create_ticket_screen.dart';
 import 'features/tickets/ticket_detail_screen.dart';
@@ -42,9 +45,20 @@ abstract class AppRoutes {
   static const calendar = '/calendar';
   static const export = '/export';
   static const tenants = '/tenants';
+  static const invoiceDetail = '/invoice/:id';
+  static const guestReport = '/guest-report';
+  static const tenantSettings = '/tenant-settings';
 
   static String ticketDetailPath(String id) => '/ticket/$id';
   static String unitDetailPath(String id) => '/unit/$id';
+  static String invoiceDetailPath(String id) => '/invoice/$id';
+  static String guestReportPath({
+    required String unitId,
+    required String tenantId,
+    required String unitName,
+  }) =>
+      '/guest-report?unitId=$unitId&tenantId=$tenantId'
+      '&unitName=${Uri.encodeComponent(unitName)}';
 }
 
 // ─── Router notifier (bridges Riverpod → GoRouter refreshListenable) ─────────
@@ -179,6 +193,25 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.tenants,
         builder: (_, __) => const TenantsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.invoiceDetail,
+        builder: (_, state) => InvoiceDetailScreen(
+          invoiceId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.tenantSettings,
+        builder: (_, __) => const TenantSettingsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.guestReport,
+        builder: (_, state) => GuestReportScreen(
+          unitId: state.uri.queryParameters['unitId'] ?? '',
+          tenantId: state.uri.queryParameters['tenantId'] ?? '',
+          unitName: Uri.decodeComponent(
+              state.uri.queryParameters['unitName'] ?? ''),
+        ),
       ),
     ],
   );

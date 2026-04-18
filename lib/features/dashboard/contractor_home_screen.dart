@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -110,6 +111,8 @@ class _ContractorHomeScreenState extends ConsumerState<ContractorHomeScreen> {
       ),
       body: Column(
         children: [
+          _NewAssignmentsSection(
+              onTap: (t) => context.push(AppRoutes.ticketDetailPath(t.id))),
           _FilterBar(filter: _statusFilter, onSelected: _applyFilter),
           Expanded(child: _buildBody()),
         ],
@@ -120,6 +123,11 @@ class _ContractorHomeScreenState extends ConsumerState<ContractorHomeScreen> {
   Widget _buildBody() {
     if (_error != null && _tickets.isEmpty) {
       return ErrorState(message: _error!, onRetry: _refresh);
+    }
+
+    // First load: show skeleton instead of blank screen
+    if (_tickets.isEmpty && _isLoading) {
+      return const TicketSkeletonList();
     }
 
     if (_tickets.isEmpty && !_isLoading) {
@@ -157,6 +165,77 @@ class _ContractorHomeScreenState extends ConsumerState<ContractorHomeScreen> {
           );
         },
       ),
+    );
+  }
+}
+
+// ─── New assignments section ──────────────────────────────────────────────────
+
+class _NewAssignmentsSection extends ConsumerWidget {
+  const _NewAssignmentsSection({required this.onTap});
+  final ValueChanged<Ticket> onTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ticketsAsync = ref.watch(contractorTicketsProvider);
+
+    return ticketsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (tickets) {
+        final newAssignments =
+            tickets.where((t) => t.status == 'open').toList();
+        if (newAssignments.isEmpty) return const SizedBox.shrink();
+
+        final cs = Theme.of(context).colorScheme;
+        return Container(
+          margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Color.alphaBlend(
+                Colors.orange.withValues(alpha: 0.1), cs.surface),
+            borderRadius: BorderRadius.circular(12),
+            border:
+                Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.notification_important_outlined,
+                      color: Colors.orange, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Neue Aufträge (${newAssignments.length})',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        color: Colors.orange),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...newAssignments.map(
+                (t) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.assignment_outlined,
+                      color: Colors.orange),
+                  title: Text(t.title,
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600)),
+                  subtitle: t.unitName != null
+                      ? Text(t.unitName!,
+                          style: const TextStyle(fontSize: 11))
+                      : null,
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => onTap(t),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -212,11 +291,19 @@ class _ContractorTicketCard extends StatelessWidget {
         leading: ticket.imageUrl != null
             ? ClipRRect(
                 borderRadius: BorderRadius.circular(6),
-                child: Image.network(
-                  ticket.imageUrl!,
+                child: CachedNetworkImage(
+                  imageUrl: ticket.imageUrl!,
                   width: 48,
                   height: 48,
                   fit: BoxFit.cover,
+                  placeholder: (_, __) => const SizedBox(
+                    width: 48,
+                    height: 48,
+                    child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 1.5)),
+                  ),
+                  errorWidget: (_, __, ___) =>
+                      const Icon(Icons.broken_image_outlined, size: 36),
                 ),
               )
             : const Icon(Icons.handyman_outlined, size: 36),

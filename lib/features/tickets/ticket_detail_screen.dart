@@ -1,17 +1,23 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/activity_entry.dart';
 import '../../models/comment.dart';
+import '../../models/invoice.dart';
 import '../../models/ticket.dart';
 import '../../repositories/activity_repository.dart';
 import '../../repositories/comment_repository.dart';
+import '../../repositories/invoice_repository.dart';
 import '../../repositories/ticket_repository.dart';
+import '../../router.dart';
 import '../../services/notification_service.dart';
 import '../../ticket_provider.dart';
 import '../../user_provider.dart';
@@ -135,6 +141,21 @@ class _TicketDetailBody extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Status-Timeline ────────────────────────────────────────────
+          _StatusTimeline(ticket: ticket),
+
+          const SizedBox(height: 16),
+
+          // ── Termin-Banner ──────────────────────────────────────────────
+          if (ticket.scheduledAt != null)
+            _AppointmentBanner(scheduledAt: ticket.scheduledAt!),
+
+          // ── Handwerker-Card (für Mieter) ───────────────────────────────
+          if (ticket.assignedTo != null)
+            _ContractorInfoCard(ticket: ticket),
+
+          const SizedBox(height: 8),
+
           // Fotos (mehrere, antippbar)
           if (ticket.imageUrls.isNotEmpty) ...[
             _ImageGallery(urls: ticket.imageUrls),
@@ -218,6 +239,13 @@ class _TicketDetailBody extends ConsumerWidget {
             ...ticket.documents.map((doc) => _DocumentTile(doc: doc)),
           ],
 
+          // Handwerker-Aktionskarte (Annehmen / Ablehnen / Termin)
+          if (_isContractor) ...[
+            const SizedBox(height: 24),
+            const Divider(),
+            _ContractorActionCard(ticket: ticket),
+          ],
+
           // Status-Buttons für Handwerker und Manager
           if (_canChangeStatus(ref)) ...[
             const SizedBox(height: 24),
@@ -226,6 +254,11 @@ class _TicketDetailBody extends ConsumerWidget {
             const SizedBox(height: 10),
             _StatusButtons(ticket: ticket, onUpdate: _updateStatus),
           ],
+
+          // Rechnungen (Handwerker hochladen / Manager prüfen)
+          const SizedBox(height: 24),
+          const Divider(),
+          _InvoiceSection(ticket: ticket),
 
           // Aktivitäts-Log
           const SizedBox(height: 24),
@@ -236,6 +269,207 @@ class _TicketDetailBody extends ConsumerWidget {
           const SizedBox(height: 24),
           const Divider(),
           _CommentThread(ticket: ticket),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Status timeline ─────────────────────────────────────────────────────────
+
+class _StatusTimeline extends StatelessWidget {
+  const _StatusTimeline({required this.ticket});
+  final Ticket ticket;
+
+  static const _steps = [
+    ('open', 'Gemeldet', Icons.flag_outlined),
+    ('assigned', 'Zugewiesen', Icons.person_outline),
+    ('in_progress', 'In Bearbeitung', Icons.build_outlined),
+    ('done', 'Erledigt', Icons.check_circle_outline),
+  ];
+
+  int get _currentStep {
+    if (ticket.status == 'done') return 3;
+    if (ticket.status == 'in_progress') return 2;
+    if (ticket.assignedTo != null) return 1;
+    return 0;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final current = _currentStep;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(cs.primary.withValues(alpha: 0.06), cs.surface),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: List.generate(_steps.length, (i) {
+          final (_, label, icon) = _steps[i];
+          final isDone = i < current;
+          final isActive = i == current;
+          final color = isDone || isActive ? cs.primary : cs.outlineVariant;
+
+          return Expanded(
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: isDone || isActive
+                              ? Color.alphaBlend(
+                                  cs.primary.withValues(alpha: 0.15), cs.surface)
+                              : Colors.transparent,
+                          border: Border.all(color: color, width: 2),
+                        ),
+                        child: Icon(
+                          isDone ? Icons.check : icon,
+                          size: 16,
+                          color: color,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isDone || isActive ? cs.primary : cs.outline,
+                          fontWeight: isActive ? FontWeight.w700 : FontWeight.normal,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+                // Connector line (not after last step)
+                if (i < _steps.length - 1)
+                  Expanded(
+                    child: Container(
+                      height: 2,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      color: i < current ? cs.primary : cs.outlineVariant,
+                    ),
+                  ),
+              ],
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+// ─── Appointment banner ───────────────────────────────────────────────────────
+
+class _AppointmentBanner extends StatelessWidget {
+  const _AppointmentBanner({required this.scheduledAt});
+  final DateTime scheduledAt;
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = DateFormat('EEEE, dd. MMMM yyyy', 'de');
+    final isUpcoming = scheduledAt.isAfter(DateTime.now());
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          Colors.blue.withValues(alpha: 0.1),
+          Theme.of(context).colorScheme.surface,
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.blue.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.event_outlined, color: Colors.blue, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isUpcoming ? 'Ihr Termin' : 'Geplanter Termin',
+                  style: const TextStyle(
+                      fontSize: 11, color: Colors.blue, fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  fmt.format(scheduledAt),
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Contractor info card ─────────────────────────────────────────────────────
+
+class _ContractorInfoCard extends StatelessWidget {
+  const _ContractorInfoCard({required this.ticket});
+  final Ticket ticket;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final name = ticket.assignedToName ?? 'Handwerker';
+    final isDone = ticket.status == 'done';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          Colors.green.withValues(alpha: 0.08),
+          cs.surface,
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.green.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 22,
+            backgroundColor:
+                Color.alphaBlend(Colors.green.withValues(alpha: 0.15), cs.surface),
+            child: Text(
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, color: Colors.green),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  isDone ? 'Erledigt von' : 'Zuständiger Handwerker',
+                  style: const TextStyle(
+                      fontSize: 11, color: Colors.green, fontWeight: FontWeight.w600),
+                ),
+                Text(name,
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+          const Icon(Icons.handyman_outlined, color: Colors.green, size: 20),
         ],
       ),
     );
@@ -267,11 +501,19 @@ class _ImageGallery extends StatelessWidget {
         onTap: () => _openViewer(context, 0),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: Image.network(
-            urls.first,
+          child: CachedNetworkImage(
+            imageUrl: urls.first,
             width: double.infinity,
             height: 220,
             fit: BoxFit.cover,
+            placeholder: (_, __) => const SizedBox(
+              height: 220,
+              child: Center(child: CircularProgressIndicator()),
+            ),
+            errorWidget: (_, __, ___) => const SizedBox(
+              height: 220,
+              child: Center(child: Icon(Icons.broken_image_outlined, size: 48)),
+            ),
           ),
         ),
       );
@@ -286,10 +528,19 @@ class _ImageGallery extends StatelessWidget {
           onTap: () => _openViewer(context, i),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              urls[i],
+            child: CachedNetworkImage(
+              imageUrl: urls[i],
               width: 280,
               fit: BoxFit.cover,
+              placeholder: (_, __) => const SizedBox(
+                width: 280,
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              errorWidget: (_, __, ___) => const SizedBox(
+                width: 280,
+                child: Center(
+                    child: Icon(Icons.broken_image_outlined, size: 48)),
+              ),
             ),
           ),
         ),
@@ -344,9 +595,14 @@ class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
           minScale: 0.5,
           maxScale: 4.0,
           child: Center(
-            child: Image.network(
-              widget.urls[i],
+            child: CachedNetworkImage(
+              imageUrl: widget.urls[i],
               fit: BoxFit.contain,
+              placeholder: (_, __) =>
+                  const Center(child: CircularProgressIndicator()),
+              errorWidget: (_, __, ___) => const Center(
+                  child: Icon(Icons.broken_image_outlined,
+                      size: 64, color: Colors.white54)),
             ),
           ),
         ),
@@ -657,6 +913,418 @@ class _CommentThreadState extends ConsumerState<_CommentThread> {
     );
   }
 }
+
+// ─── Invoice section ─────────────────────────────────────────────────────────
+
+class _InvoiceSection extends ConsumerStatefulWidget {
+  const _InvoiceSection({required this.ticket});
+  final Ticket ticket;
+
+  @override
+  ConsumerState<_InvoiceSection> createState() => _InvoiceSectionState();
+}
+
+class _InvoiceSectionState extends ConsumerState<_InvoiceSection> {
+  bool _uploading = false;
+
+  bool get _isContractor =>
+      FirebaseAuth.instance.currentUser?.uid == widget.ticket.assignedTo;
+
+  bool get _isManager =>
+      ref.read(currentUserProvider).valueOrNull?.role == 'manager';
+
+  Future<void> _submitInvoice() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    if (file.bytes == null) return;
+
+    final user = ref.read(currentUserProvider).valueOrNull;
+    if (user == null) return;
+
+    setState(() => _uploading = true);
+    try {
+      // 1. Create invoice document first to get the ID
+      final invoiceRepo = ref.read(invoiceRepositoryProvider);
+      final invoice = Invoice(
+        id: '',
+        ticketId: widget.ticket.id,
+        ticketTitle: widget.ticket.title,
+        contractorId: user.uid,
+        contractorName: user.name.isNotEmpty ? user.name : user.email,
+        tenantId: user.tenantId,
+        amount: 0.0,
+        status: InvoiceStatus.pending,
+        positions: const [],
+      );
+      final invoiceId = await invoiceRepo.createInvoice(invoice);
+
+      // 2. Upload PDF
+      final ref2 = FirebaseStorage.instance
+          .ref('invoices/${user.uid}/$invoiceId.pdf');
+      await ref2.putData(
+        file.bytes!,
+        SettableMetadata(contentType: 'application/pdf'),
+      );
+      final pdfUrl = await ref2.getDownloadURL();
+
+      // 3. Update invoice with PDF URL
+      await invoiceRepo.updatePdfUrl(invoiceId, pdfUrl);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Rechnung eingereicht')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final invoicesAsync =
+        ref.watch(invoicesForTicketProvider(widget.ticket.id));
+    final canSubmit =
+        _isContractor && widget.ticket.status == 'done';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text(
+              'Rechnungen',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            ),
+            const Spacer(),
+            if (canSubmit)
+              FilledButton.icon(
+                icon: _uploading
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.upload_file_outlined, size: 18),
+                label: const Text('Rechnung einreichen'),
+                onPressed: _uploading ? null : _submitInvoice,
+                style: FilledButton.styleFrom(
+                  visualDensity: VisualDensity.compact,
+                  textStyle: const TextStyle(fontSize: 12),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        invoicesAsync.when(
+          loading: () => const SizedBox(
+            height: 32,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
+          error: (e, _) =>
+              Text('Fehler: $e', style: const TextStyle(color: Colors.red)),
+          data: (invoices) {
+            if (invoices.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('Noch keine Rechnungen.',
+                    style: TextStyle(color: Colors.grey)),
+              );
+            }
+            return Column(
+              children: invoices
+                  .map((inv) => _InvoiceTile(
+                        invoice: inv,
+                        isManager: _isManager,
+                      ))
+                  .toList(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _InvoiceTile extends StatelessWidget {
+  const _InvoiceTile({required this.invoice, required this.isManager});
+  final Invoice invoice;
+  final bool isManager;
+
+  Color _statusColor(InvoiceStatus s) {
+    switch (s) {
+      case InvoiceStatus.approved:
+        return Colors.green;
+      case InvoiceStatus.rejected:
+        return Colors.red;
+      case InvoiceStatus.exported:
+        return Colors.blue;
+      default:
+        return Colors.orange;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = DateFormat('dd.MM.yy');
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading:
+            const Icon(Icons.receipt_long_outlined, color: Colors.blueGrey),
+        title: Text(
+          invoice.contractorName,
+          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+        ),
+        subtitle: Text(
+          invoice.createdAt != null ? fmt.format(invoice.createdAt!) : '–',
+          style: const TextStyle(fontSize: 11),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppStatusBadge(
+              label: invoice.status.label,
+              color: _statusColor(invoice.status),
+            ),
+            if (isManager) ...[
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right, size: 18),
+            ],
+          ],
+        ),
+        onTap: isManager
+            ? () => context.push(AppRoutes.invoiceDetailPath(invoice.id))
+            : invoice.pdfUrl != null
+                ? () async {
+                    final uri = Uri.parse(invoice.pdfUrl!);
+                    if (await canLaunchUrl(uri)) launchUrl(uri);
+                  }
+                : null,
+      ),
+    );
+  }
+}
+
+// ─── Contractor action card (Phase D) ────────────────────────────────────────
+
+class _ContractorActionCard extends ConsumerStatefulWidget {
+  const _ContractorActionCard({required this.ticket});
+  final Ticket ticket;
+
+  @override
+  ConsumerState<_ContractorActionCard> createState() =>
+      _ContractorActionCardState();
+}
+
+class _ContractorActionCardState extends ConsumerState<_ContractorActionCard> {
+  bool _loading = false;
+
+  TicketRepository get _ticketRepo => ref.read(ticketRepositoryProvider);
+  ActivityRepository get _activityRepo => ref.read(activityRepositoryProvider);
+
+  Future<void> _accept() async {
+    setState(() => _loading = true);
+    try {
+      await _ticketRepo.acceptAssignment(
+        widget.ticket.id,
+        activityRepo: _activityRepo,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Auftrag angenommen')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _decline() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Auftrag ablehnen?'),
+        content: const Text(
+            'Die Zuweisung wird aufgehoben. Der Verwalter muss erneut einen Handwerker zuweisen.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Ablehnen'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _loading = true);
+    try {
+      await _ticketRepo.declineAssignment(
+        widget.ticket.id,
+        activityRepo: _activityRepo,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Auftrag abgelehnt')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _pickAppointment() async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: widget.ticket.scheduledAt ?? now.add(const Duration(days: 1)),
+      firstDate: now,
+      lastDate: now.add(const Duration(days: 365)),
+      locale: const Locale('de'),
+    );
+    if (date == null || !mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(
+          widget.ticket.scheduledAt ?? now.add(const Duration(hours: 1))),
+    );
+    if (time == null || !mounted) return;
+
+    final scheduledAt =
+        DateTime(date.year, date.month, date.day, time.hour, time.minute);
+
+    setState(() => _loading = true);
+    try {
+      await _ticketRepo.setAppointment(
+        widget.ticket.id,
+        scheduledAt,
+        activityRepo: _activityRepo,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Termin gespeichert')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = widget.ticket.status;
+    final isOpen = status == 'open';
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(cs.primary.withValues(alpha: 0.05), cs.surface),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.primary.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.work_outline, size: 18, color: cs.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Mein Auftrag',
+                style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    color: cs.primary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (_loading)
+            const Center(child: CircularProgressIndicator())
+          else if (isOpen) ...[
+            // Not yet accepted: show accept / decline
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.check_circle_outline, size: 18),
+                    label: const Text('Annehmen'),
+                    onPressed: _accept,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.cancel_outlined, size: 18),
+                    label: const Text('Ablehnen'),
+                    style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red)),
+                    onPressed: _decline,
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            // Accepted (in_progress or done): show appointment button
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.event_outlined, size: 18),
+                label: Text(widget.ticket.scheduledAt != null
+                    ? 'Termin ändern'
+                    : 'Termin festlegen'),
+                onPressed: _pickAppointment,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Comment bubble ───────────────────────────────────────────────────────────
 
 class _CommentBubble extends StatelessWidget {
   const _CommentBubble({

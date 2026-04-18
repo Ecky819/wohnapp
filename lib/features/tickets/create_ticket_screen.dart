@@ -9,6 +9,7 @@ import '../../models/building.dart';
 import '../../models/unit.dart';
 import '../../repositories/activity_repository.dart';
 import '../../repositories/building_repository.dart';
+import '../../services/ai_analysis_service.dart';
 import '../../services/routing_service.dart';
 import '../../services/upload_retry_service.dart';
 import '../../ticket_provider.dart';
@@ -40,14 +41,61 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   RankedContractor? _routingSuggestion;
   RankedContractor? _acceptedSuggestion;
 
+  TicketAnalysis? _aiAnalysis;
+  bool _aiAnalyzing = false;
+
   final _picker = ImagePicker();
 
   bool get _isManager =>
       ref.read(currentUserProvider).valueOrNull?.role == 'manager';
 
+  // ─── KI-Analyse ───────────────────────────────────────────────────────────
+
+  Future<void> _runAiAnalysis() async {
+    final title = _titleController.text.trim();
+    final desc = _descriptionController.text.trim();
+    if (title.isEmpty && desc.isEmpty) return;
+
+    setState(() {
+      _aiAnalyzing = true;
+      _aiAnalysis = null;
+    });
+
+    final analysis = await AiAnalysisService.instance.analyzeTicket(
+      title: title,
+      description: desc,
+    );
+
+    if (!mounted) return;
+
+    if (analysis == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('KI-Analyse nicht verfügbar – Keyword-Erkennung aktiv.'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      setState(() => _aiAnalyzing = false);
+      return;
+    }
+
+    setState(() {
+      _aiAnalysis = analysis;
+      _aiAnalyzing = false;
+      // Auto-apply high-confidence results
+      if (analysis.confidence >= 0.7) {
+        _category = analysis.ticketCategory;
+        _priority = analysis.priority;
+      }
+    });
+
+    // Re-run routing with AI-detected trade category
+    _updateRoutingSuggestion(aiTradeCategory: analysis.tradeCategory);
+  }
+
   // ─── Routing suggestion ───────────────────────────────────────────────────
 
-  void _updateRoutingSuggestion() {
+  void _updateRoutingSuggestion({String? aiTradeCategory}) {
     if (!_isManager) return;
     final title = _titleController.text;
     final desc = _descriptionController.text;
@@ -58,7 +106,9 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
 
     final contractors = ref.read(contractorsProvider).valueOrNull ?? [];
     final allTickets = ref.read(allTicketsProvider).valueOrNull ?? [];
-    final category = RoutingService.detectCategory(title, desc);
+    // Prefer AI trade category when available, fall back to keyword detection
+    final category =
+        aiTradeCategory ?? RoutingService.detectCategory(title, desc);
 
     final ranked = RoutingService.rankContractors(
       category: category,
@@ -159,7 +209,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
             );
       }
 
-      if (mounted) Navigator.pop(context);
+      if (mounted) Navigator.pop(context, true); // true = ticket was created
     } on UploadException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -382,6 +432,17 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                   : null,
             ),
 
+            // ── KI-Analyse ────────────────────────────────────────────
+            const SizedBox(height: 10),
+            _AiAnalysisButton(
+              analyzing: _aiAnalyzing,
+              onAnalyze: _runAiAnalysis,
+            ),
+            if (_aiAnalysis != null) ...[
+              const SizedBox(height: 10),
+              _AiResultCard(analysis: _aiAnalysis!),
+            ],
+
             // ── Routing suggestion (manager only) ─────────────────────
             if (_isManager && _routingSuggestion != null) ...[
               const SizedBox(height: 12),
@@ -481,6 +542,162 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                   ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── KI-Analyse Button ────────────────────────────────────────────────────────
+
+class _AiAnalysisButton extends StatelessWidget {
+  const _AiAnalysisButton({
+    required this.analyzing,
+    required this.onAnalyze,
+  });
+
+  final bool analyzing;
+  final VoidCallback onAnalyze;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      icon: analyzing
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.auto_awesome, size: 18),
+      label: Text(analyzing ? 'KI analysiert …' : 'KI-Analyse starten'),
+      onPressed: analyzing ? null : onAnalyze,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Theme.of(context).colorScheme.primary,
+        side: BorderSide(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── KI-Ergebnis Card ─────────────────────────────────────────────────────────
+
+class _AiResultCard extends StatelessWidget {
+  const _AiResultCard({required this.analysis});
+  final TicketAnalysis analysis;
+
+  static const _tradeLabels = <String, String>{
+    'plumbing': 'Sanitär',
+    'electrical': 'Elektro',
+    'heating': 'Heizung',
+    'general': 'Allgemein',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final confidencePct = (analysis.confidence * 100).round();
+    final isHighPriority = analysis.priority == 'high';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          cs.primary.withValues(alpha: 0.07),
+          cs.surface,
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: cs.primary.withValues(alpha: 0.3),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.auto_awesome, size: 15, color: cs.primary),
+              const SizedBox(width: 6),
+              Text(
+                'KI-Analyse · $confidencePct% Konfidenz',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: cs.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: [
+              _Chip(
+                label:
+                    analysis.ticketCategory == 'maintenance' ? 'Wartung' : 'Schaden',
+                icon: analysis.ticketCategory == 'maintenance'
+                    ? Icons.build_circle_outlined
+                    : Icons.report_problem_outlined,
+              ),
+              _Chip(
+                label: _tradeLabels[analysis.tradeCategory] ?? 'Allgemein',
+                icon: Icons.handyman_outlined,
+              ),
+              _Chip(
+                label: isHighPriority ? 'Hohe Priorität' : 'Normale Priorität',
+                icon: isHighPriority ? Icons.priority_high : Icons.low_priority,
+                color: isHighPriority ? Colors.red : Colors.green,
+              ),
+            ],
+          ),
+          if (analysis.reasoning.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              analysis.reasoning,
+              style: TextStyle(fontSize: 12, color: cs.onSurface.withValues(alpha: 0.7)),
+            ),
+          ],
+          if (analysis.confidence < 0.7) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Niedrige Konfidenz – Felder wurden nicht automatisch übernommen.',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.orange.shade700,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({required this.label, required this.icon, this.color});
+  final String label;
+  final IconData icon;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? Theme.of(context).colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(c.withValues(alpha: 0.12),
+            Theme.of(context).colorScheme.surface),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: c),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(fontSize: 11, color: c)),
+        ],
       ),
     );
   }
