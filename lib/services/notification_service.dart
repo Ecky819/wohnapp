@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,12 +12,19 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   debugPrint('Background message: ${message.messageId}');
 }
 
-// ─── Android notification channel ─────────────────────────────────────────────
+// ─── Android notification channels ───────────────────────────────────────────
 
-const _kAndroidChannel = AndroidNotificationChannel(
+const _kTicketChannel = AndroidNotificationChannel(
   'ticket_updates',
   'Ticket-Updates',
   description: 'Benachrichtigungen zu Statusänderungen, Zuweisungen und Kommentaren.',
+  importance: Importance.high,
+);
+
+const _kMaintenanceChannel = AndroidNotificationChannel(
+  'maintenance_alerts',
+  'Wartungshinweise',
+  description: 'Benachrichtigungen zu überfälligen oder bald fälligen Gerätewartungen.',
   importance: Importance.high,
 );
 
@@ -25,6 +34,10 @@ class NotificationService {
 
   final _messaging = FirebaseMessaging.instance;
   final _localNotifications = FlutterLocalNotificationsPlugin();
+
+  // Emits route paths that the app should navigate to on notification tap.
+  static final _navController = StreamController<String>.broadcast();
+  static Stream<String> get onNavigateTo => _navController.stream;
 
   Future<void> init() async {
     // ── iOS / Android permissions ──────────────────────────────────────────
@@ -37,21 +50,31 @@ class NotificationService {
     // ── Background handler ─────────────────────────────────────────────────
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-    // ── Local notifications setup (needed for foreground on Android) ───────
-    await _localNotifications
+    // ── Android notification channels ──────────────────────────────────────
+    final androidPlugin = _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_kAndroidChannel);
+            AndroidFlutterLocalNotificationsPlugin>();
+    await androidPlugin?.createNotificationChannel(_kTicketChannel);
+    await androidPlugin?.createNotificationChannel(_kMaintenanceChannel);
 
+    // ── Local notifications init ───────────────────────────────────────────
     const initSettings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       iOS: DarwinInitializationSettings(
-        requestAlertPermission: false, // already requested above via FCM
+        requestAlertPermission: false,
         requestBadgePermission: false,
         requestSoundPermission: false,
       ),
     );
-    await _localNotifications.initialize(settings: initSettings);
+    await _localNotifications.initialize(
+      settings: initSettings,
+      onDidReceiveNotificationResponse: (details) {
+        // Maintenance alert tap → open Digital Twin
+        if (details.payload == 'maintenance_alert') {
+          _navController.add('/buildings');
+        }
+      },
+    );
 
     // ── iOS: show notification banner while app is in foreground ───────────
     await _messaging.setForegroundNotificationPresentationOptions(
@@ -62,6 +85,19 @@ class NotificationService {
 
     // ── Foreground FCM messages → local notification ───────────────────────
     FirebaseMessaging.onMessage.listen(_onForegroundMessage);
+
+    // ── Background tap: app was in background, user taps notification ──────
+    FirebaseMessaging.onMessageOpenedApp.listen((msg) {
+      if (msg.data['type'] == 'maintenance_alert') {
+        _navController.add('/buildings');
+      }
+    });
+
+    // ── Terminated tap: app was killed, user taps notification ─────────────
+    final initial = await _messaging.getInitialMessage();
+    if (initial?.data['type'] == 'maintenance_alert') {
+      _navController.add('/buildings');
+    }
 
     // ── Token management ───────────────────────────────────────────────────
     await _saveFcmToken();
@@ -74,15 +110,18 @@ class NotificationService {
     final notification = message.notification;
     if (notification == null) return;
 
+    final isMaintenance = message.data['type'] == 'maintenance_alert';
+    final channel = isMaintenance ? _kMaintenanceChannel : _kTicketChannel;
+
     await _localNotifications.show(
       id: notification.hashCode,
       title: notification.title,
       body: notification.body,
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
-          _kAndroidChannel.id,
-          _kAndroidChannel.name,
-          channelDescription: _kAndroidChannel.description,
+          channel.id,
+          channel.name,
+          channelDescription: channel.description,
           importance: Importance.high,
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',
@@ -93,7 +132,7 @@ class NotificationService {
           presentSound: true,
         ),
       ),
-      payload: message.data['ticketId'],
+      payload: isMaintenance ? 'maintenance_alert' : message.data['ticketId'],
     );
   }
 

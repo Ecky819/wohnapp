@@ -5,6 +5,7 @@ import {
   onDocumentUpdated,
 } from "firebase-functions/v2/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions";
 
@@ -89,14 +90,15 @@ async function sendPush(
   token: string,
   title: string,
   body: string,
-  data: Record<string, string>
+  data: Record<string, string>,
+  channelId = "ticket_updates"
 ): Promise<void> {
   await admin.messaging().send({
     token,
     notification: { title, body },
     data,
     android: {
-      notification: { channelId: "ticket_updates", priority: "high" },
+      notification: { channelId, priority: "high" },
     },
     apns: {
       payload: { aps: { sound: "default", badge: 1 } },
@@ -545,6 +547,196 @@ export const onInvoiceStatusChanged = onDocumentUpdated(
     }
   }
 );
+
+// ─── Scheduled: tägl. Wartungsalert-Check (08:00 Europe/Berlin) ──────────────
+
+/**
+ * Läuft täglich um 08:00 Uhr (Europe/Berlin).
+ * Scannt alle Geräte, berechnet nextServiceDue und schickt eine
+ * gruppierte Push-Benachrichtigung an alle Manager des betroffenen Mandanten.
+ *
+ * Throttling:
+ *   • überfällig  → max. 1× pro Tag pro Gerät
+ *   • bald fällig → max. 1× pro Woche pro Gerät
+ *
+ * Schreibt `lastMaintenanceAlertSentAt` zurück auf das Gerät-Dokument.
+ */
+export const checkMaintenanceAlerts = onSchedule(
+  {
+    schedule: "0 8 * * *",
+    timeZone: "Europe/Berlin",
+    region: "europe-west3",
+  },
+  async () => {
+    const nowMs = Date.now();
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const sevenDaysMs = 7 * oneDayMs;
+
+    const devicesSnap = await db.collection("devices").get();
+
+    const alertsByTenant: Record<
+      string,
+      { overdue: string[]; dueSoon: string[] }
+    > = {};
+    const deviceUpdates: Promise<FirebaseFirestore.WriteResult>[] = [];
+
+    for (const doc of devicesSnap.docs) {
+      const data = doc.data();
+      const tenantId = data.tenantId as string | undefined;
+      if (!tenantId) continue;
+
+      const lastServiceAt = (
+        data.lastServiceAt as admin.firestore.Timestamp | undefined
+      )?.toDate();
+      const installedAt = (
+        data.installedAt as admin.firestore.Timestamp | undefined
+      )?.toDate();
+      const baseDate = lastServiceAt ?? installedAt;
+      if (!baseDate) continue;
+
+      const intervalMonths =
+        (data.serviceIntervalMonths as number | undefined) ??
+        _defaultIntervalMonths(data.category as string | undefined);
+
+      const nextServiceDue = _addMonths(baseDate, intervalMonths);
+      const nextMs = nextServiceDue.getTime();
+
+      const isOverdue = nextMs < nowMs;
+      const isDueSoon = !isOverdue && nextMs < nowMs + thirtyDaysMs;
+      if (!isOverdue && !isDueSoon) continue;
+
+      // Throttle: skip if already alerted recently
+      const lastAlertAt = (
+        data.lastMaintenanceAlertSentAt as
+          | admin.firestore.Timestamp
+          | undefined
+      )?.toDate();
+      if (lastAlertAt) {
+        const msSince = nowMs - lastAlertAt.getTime();
+        if (isOverdue && msSince < oneDayMs) continue;
+        if (isDueSoon && msSince < sevenDaysMs) continue;
+      }
+
+      const deviceName = (data.name as string | undefined) ?? "Gerät";
+      if (!alertsByTenant[tenantId]) {
+        alertsByTenant[tenantId] = { overdue: [], dueSoon: [] };
+      }
+      if (isOverdue) {
+        alertsByTenant[tenantId].overdue.push(deviceName);
+      } else {
+        alertsByTenant[tenantId].dueSoon.push(deviceName);
+      }
+
+      deviceUpdates.push(
+        doc.ref.update({
+          lastMaintenanceAlertSentAt:
+            admin.firestore.FieldValue.serverTimestamp(),
+        })
+      );
+    }
+
+    await Promise.all(deviceUpdates);
+
+    for (const [tenantId, alerts] of Object.entries(alertsByTenant)) {
+      const managersSnap = await db
+        .collection("users")
+        .where("tenantId", "==", tenantId)
+        .where("role", "==", "manager")
+        .get();
+
+      const { title, body } = _buildAlertMessage(alerts);
+
+      for (const managerDoc of managersSnap.docs) {
+        const fcmToken = managerDoc.data().fcmToken as string | undefined;
+        if (!fcmToken) continue;
+
+        try {
+          await sendPush(
+            fcmToken,
+            title,
+            body,
+            { type: "maintenance_alert", tenantId },
+            "maintenance_alerts"
+          );
+          logger.info(
+            `Maintenance alert sent to ${managerDoc.id} for tenant ${tenantId}`
+          );
+        } catch (err) {
+          logger.error(
+            `Failed to send maintenance alert to ${managerDoc.id}`,
+            err
+          );
+        }
+      }
+    }
+
+    logger.info(
+      `checkMaintenanceAlerts done. Tenants alerted: ${Object.keys(alertsByTenant).length}`
+    );
+  }
+);
+
+function _defaultIntervalMonths(category: string | undefined): number {
+  switch (category) {
+    case "heating":
+      return 12;
+    case "plumbing":
+      return 24;
+    case "electrical":
+      return 24;
+    default:
+      return 12;
+  }
+}
+
+function _addMonths(date: Date, months: number): Date {
+  const result = new Date(date);
+  result.setMonth(result.getMonth() + months);
+  return result;
+}
+
+function _buildAlertMessage(alerts: {
+  overdue: string[];
+  dueSoon: string[];
+}): { title: string; body: string } {
+  const overdueCount = alerts.overdue.length;
+  const dueSoonCount = alerts.dueSoon.length;
+  const total = overdueCount + dueSoonCount;
+
+  const plural = (n: number, word: string) =>
+    `${n} ${word}${n !== 1 ? "en" : ""}`;
+
+  if (overdueCount > 0 && dueSoonCount === 0) {
+    const names = alerts.overdue.slice(0, 2).join(", ");
+    const suffix =
+      overdueCount > 2 ? ` und ${overdueCount - 2} weitere` : "";
+    return {
+      title: `${plural(overdueCount, "Wartung")} überfällig`,
+      body:
+        overdueCount === 1
+          ? `${names} benötigt sofort eine Wartung.`
+          : `${names}${suffix} sind überfällig.`,
+    };
+  }
+
+  if (dueSoonCount > 0 && overdueCount === 0) {
+    const names = alerts.dueSoon.slice(0, 2).join(", ");
+    const suffix = dueSoonCount > 2 ? ` und ${dueSoonCount - 2} weitere` : "";
+    return {
+      title: `${plural(dueSoonCount, "Wartung")} bald fällig`,
+      body:
+        dueSoonCount === 1
+          ? `${names} wird in weniger als 30 Tagen fällig.`
+          : `${names}${suffix} bald fällig.`,
+    };
+  }
+
+  return {
+    title: `${total} Wartungshinweise`,
+    body: `${overdueCount} überfällig, ${dueSoonCount} bald fällig.`,
+  };
+}
 
 // ─── Helper: compute total tenant costs from positions array ─────────────────
 

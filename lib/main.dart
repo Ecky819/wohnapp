@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -34,11 +36,32 @@ final _connectivityProvider =
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 
-class MyApp extends ConsumerWidget {
+class MyApp extends ConsumerStatefulWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends ConsumerState<MyApp> {
+  StreamSubscription<String>? _navSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _navSub = NotificationService.onNavigateTo.listen((path) {
+      ref.read(routerProvider).go(path);
+    });
+  }
+
+  @override
+  void dispose() {
+    _navSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     final tenant = ref.watch(tenantProvider).valueOrNull;
     final seedColor = tenant?.primaryColor ?? Colors.indigo;
