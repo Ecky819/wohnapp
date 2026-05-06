@@ -28,12 +28,13 @@ class UserRepository {
     }
 
     // New user — use invitation data if available
-    final data = {
+    final data = <String, dynamic>{
       'email': firebaseUser.email ?? '',
       'name': firebaseUser.email?.split('@')[0] ?? '',
       'role': invitation?.roleString ?? 'tenant_user',
       'tenantId': invitation?.tenantId ?? 'tenant_1',
       'createdAt': FieldValue.serverTimestamp(),
+      if (invitation?.unitId != null) 'unitId': invitation!.unitId,
     };
 
     await ref.set(data);

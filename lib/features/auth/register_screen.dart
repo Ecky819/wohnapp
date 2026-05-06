@@ -42,8 +42,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       MaterialPageRoute(builder: (_) => const QrScannerScreen()),
     );
     if (result == null) return;
-    _codeController.text = result.toUpperCase();
-    await _previewCode(result);
+    // Support full registration URLs encoded in QR (e.g. https://…/register?code=XXXX)
+    final code = _extractCode(result);
+    _codeController.text = code.toUpperCase();
+    await _previewCode(code);
+  }
+
+  static String _extractCode(String raw) {
+    try {
+      final uri = Uri.parse(raw);
+      final codeParam = uri.queryParameters['code'];
+      if (codeParam != null && codeParam.isNotEmpty) return codeParam;
+    } catch (_) {}
+    return raw;
   }
 
   Future<void> _previewCode(String code) async {

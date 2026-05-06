@@ -15,11 +15,12 @@ service firebase.storage {
       return request.resource.contentType.matches('image/.*');
     }
 
+    function isPdf() {
+      return request.resource.contentType == 'application/pdf';
+    }
+
     function isDocument() {
-      return request.resource.contentType.matches('image/.*') ||
-             request.resource.contentType.matches('application/pdf') ||
-             request.resource.contentType.matches('application/.*') ||
-             request.resource.contentType.matches('text/.*');
+      return isImage() || isPdf();
     }
 
     function underSizeLimit(maxMb) {
@@ -34,10 +35,31 @@ service firebase.storage {
     }
 
     // ── tickets/{uid}/{ticketId}/docs/{filename} ──────────────────────────────
-    // Documents: max 20 MB, images + PDF + office formats
+    // Documents: max 10 MB, images + PDF only
     match /tickets/{uid}/{ticketId}/docs/{filename} {
       allow read:  if isAuth();
-      allow write: if isOwner(uid) && isDocument() && underSizeLimit(20);
+      allow write: if isOwner(uid) && isDocument() && underSizeLimit(10);
+    }
+
+    // ── invoices/{uid}/{invoiceId}.pdf ────────────────────────────────────────
+    // Invoice PDFs: max 10 MB, PDF only
+    match /invoices/{uid}/{filename} {
+      allow read:  if isAuth();
+      allow write: if isOwner(uid) && isPdf() && underSizeLimit(10);
+    }
+
+    // ── statements/{tenantId}/{filename} ─────────────────────────────────────
+    // Abrechnungs-PDFs: max 10 MB, PDF only
+    match /statements/{tenantId}/{filename} {
+      allow read:  if isAuth();
+      allow write: if isAuth() && isPdf() && underSizeLimit(10);
+    }
+
+    // ── statements/{tenantId}/receipts/{filename} ─────────────────────────────
+    // Belegbilder: max 10 MB, Bilder only (§ 259 BGB: Mieter hat Einsichtsrecht)
+    match /statements/{tenantId}/receipts/{filename} {
+      allow read:  if isAuth();
+      allow write: if isAuth() && isImage() && underSizeLimit(10);
     }
   }
 }

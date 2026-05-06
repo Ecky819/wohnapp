@@ -12,6 +12,15 @@ class Tenant {
     this.contactPhone,
     this.address,
     this.imprintUrl,
+    // SEPA / Bankverbindung
+    this.bankAccountHolder,
+    this.bankIban,
+    this.bankBic,
+    // Integrationen
+    this.erpWebhookUrl,
+    this.erpWebhookSecret,
+    this.datevConsultantNumber,
+    this.datevClientNumber,
   });
 
   final String id;
@@ -23,6 +32,13 @@ class Tenant {
   final String? contactPhone;
   final String? address;
   final String? imprintUrl;
+  final String? bankAccountHolder;
+  final String? bankIban;
+  final String? bankBic;
+  final String? erpWebhookUrl;
+  final String? erpWebhookSecret;
+  final String? datevConsultantNumber;
+  final String? datevClientNumber;
 
   /// Converts a stored hex string (e.g. '#6366F1' or '6366F1') to a Color.
   static Color? _hexToColor(String? hex) {
@@ -51,6 +67,13 @@ class Tenant {
       contactPhone: data['contactPhone'] as String?,
       address: data['address'] as String?,
       imprintUrl: data['imprintUrl'] as String?,
+      bankAccountHolder: data['bankAccountHolder'] as String?,
+      bankIban: data['bankIban'] as String?,
+      bankBic: data['bankBic'] as String?,
+      erpWebhookUrl: data['erpWebhookUrl'] as String?,
+      erpWebhookSecret: data['erpWebhookSecret'] as String?,
+      datevConsultantNumber: data['datevConsultantNumber'] as String?,
+      datevClientNumber: data['datevClientNumber'] as String?,
     );
   }
 
@@ -63,5 +86,12 @@ class Tenant {
         if (contactPhone != null) 'contactPhone': contactPhone,
         if (address != null) 'address': address,
         if (imprintUrl != null) 'imprintUrl': imprintUrl,
+        if (bankAccountHolder != null) 'bankAccountHolder': bankAccountHolder,
+        if (bankIban != null) 'bankIban': bankIban,
+        if (bankBic != null) 'bankBic': bankBic,
+        if (erpWebhookUrl != null) 'erpWebhookUrl': erpWebhookUrl,
+        if (erpWebhookSecret != null) 'erpWebhookSecret': erpWebhookSecret,
+        if (datevConsultantNumber != null) 'datevConsultantNumber': datevConsultantNumber,
+        if (datevClientNumber != null) 'datevClientNumber': datevClientNumber,
       };
 }

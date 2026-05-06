@@ -9,8 +9,12 @@ import '../../repositories/building_repository.dart';
 import '../../router.dart';
 import '../../ticket_provider.dart';
 import '../../user_provider.dart';
+import '../../repositories/annual_statement_repository.dart';
+import '../../models/annual_statement.dart';
 import '../../widgets/app_state_widgets.dart';
 import '../auth/qr_scanner_screen.dart';
+
+final _dateFmt = DateFormat('dd.MM.yy HH:mm');
 
 class TenantHomeScreen extends ConsumerWidget {
   const TenantHomeScreen({super.key});
@@ -110,6 +114,12 @@ class TenantHomeScreen extends ConsumerWidget {
 
           const SizedBox(height: 24),
 
+          // ── Neue Jahresabrechnungen ────────────────────────────────
+          _PendingStatementsSection(),
+
+          // ── Live-Tracking aktiver Aufträge ─────────────────────────
+          _LiveTrackingSection(),
+
           // ── Recent tickets ─────────────────────────────────────────
           const Text(
             'Zuletzt erstellt',
@@ -166,6 +176,250 @@ class _UnitSummaryCard extends StatelessWidget {
         ),
         trailing: const Icon(Icons.chevron_right),
         onTap: () => context.push(AppRoutes.unitDetailPath(unit.id)),
+      ),
+    );
+  }
+}
+
+// ─── Neue Jahresabrechnungen ──────────────────────────────────────────────────
+
+class _PendingStatementsSection extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final uid = ref.watch(currentUserProvider).valueOrNull?.uid ?? '';
+    if (uid.isEmpty) return const SizedBox.shrink();
+
+    final stmtsAsync = ref.watch(tenantStatementsProvider(uid));
+    return stmtsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (stmts) {
+        final pending = stmts
+            .where((s) => s.status != StatementStatus.acknowledged)
+            .toList();
+        if (pending.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text('Jahresabrechnungen',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 14)),
+                const Spacer(),
+                TextButton(
+                  onPressed: () =>
+                      context.push(AppRoutes.tenantStatements),
+                  child: Text('Alle (${stmts.length})'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ...pending.take(2).map((s) => _StatementBanner(stmt: s)),
+            const SizedBox(height: 16),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _StatementBanner extends ConsumerWidget {
+  const _StatementBanner({required this.stmt});
+  final AnnualStatement stmt;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Card(
+      color: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.3),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: const Icon(Icons.description_outlined),
+        title: Text('Abrechnung ${stmt.year}',
+            style: const TextStyle(
+                fontWeight: FontWeight.w600, fontSize: 13)),
+        subtitle: const Text('Empfang noch nicht bestätigt',
+            style: TextStyle(fontSize: 11)),
+        trailing: FilledButton.tonal(
+          onPressed: () => context.push(AppRoutes.tenantStatements),
+          child: const Text('Ansehen'),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Live-Tracking aktiver Aufträge ──────────────────────────────────────────
+
+class _LiveTrackingSection extends ConsumerWidget {
+  static const _steps = ['open', 'in_progress', 'done'];
+  static const _stepLabels = ['Offen', 'In Bearbeitung', 'Erledigt'];
+  static const _stepIcons = [
+    Icons.radio_button_unchecked,
+    Icons.build_outlined,
+    Icons.check_circle_outline,
+  ];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ticketsAsync = ref.watch(tenantTicketsProvider);
+    return ticketsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (tickets) {
+        final active = tickets
+            .where((t) => t.status == 'in_progress' || t.status == 'open')
+            .take(3)
+            .toList();
+        if (active.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Aktive Aufträge',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            ),
+            const SizedBox(height: 10),
+            ...active.map((t) => _LiveTrackingCard(ticket: t, steps: _steps,
+                stepLabels: _stepLabels, stepIcons: _stepIcons)),
+            const SizedBox(height: 24),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _LiveTrackingCard extends StatelessWidget {
+  const _LiveTrackingCard({
+    required this.ticket,
+    required this.steps,
+    required this.stepLabels,
+    required this.stepIcons,
+  });
+
+  final Ticket ticket;
+  final List<String> steps;
+  final List<String> stepLabels;
+  final List<IconData> stepIcons;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final currentStep = steps.indexOf(ticket.status).clamp(0, steps.length - 1);
+    final cs = theme.colorScheme;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => context.push(AppRoutes.ticketDetailPath(ticket.id)),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Titel + Icon ───────────────────────────────────────
+              Row(
+                children: [
+                  Icon(ticket.categoryIcon, size: 18, color: cs.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      ticket.title,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              // ── Status-Stepper ─────────────────────────────────────
+              Row(
+                children: List.generate(steps.length * 2 - 1, (i) {
+                  if (i.isOdd) {
+                    final stepIndex = i ~/ 2;
+                    final done = stepIndex < currentStep;
+                    return Expanded(
+                      child: Container(
+                        height: 2,
+                        color: done ? cs.primary : cs.outlineVariant,
+                      ),
+                    );
+                  }
+                  final stepIndex = i ~/ 2;
+                  final isDone = stepIndex < currentStep;
+                  final isCurrent = stepIndex == currentStep;
+                  return Column(
+                    children: [
+                      Icon(
+                        stepIcons[stepIndex],
+                        size: 20,
+                        color: isCurrent
+                            ? cs.primary
+                            : isDone
+                                ? cs.primary.withValues(alpha: 0.5)
+                                : cs.outlineVariant,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        stepLabels[stepIndex],
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: isCurrent
+                              ? FontWeight.bold
+                              : FontWeight.normal,
+                          color: isCurrent ? cs.primary : Colors.grey,
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+              ),
+
+              // ── Handwerker + Termin ────────────────────────────────
+              if (ticket.assignedToName != null ||
+                  ticket.scheduledAt != null) ...[
+                const SizedBox(height: 10),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    if (ticket.assignedToName != null) ...[
+                      const Icon(Icons.handyman_outlined,
+                          size: 14, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          ticket.assignedToName!,
+                          style: const TextStyle(
+                              fontSize: 12, color: Colors.grey),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                    if (ticket.scheduledAt != null) ...[
+                      const Icon(Icons.event_outlined,
+                          size: 14, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(
+                        _dateFmt.format(ticket.scheduledAt!),
+                        style: const TextStyle(
+                            fontSize: 12, color: Colors.grey),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

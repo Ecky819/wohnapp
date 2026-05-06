@@ -9,6 +9,9 @@ class Invitation {
   final bool used;
   final DateTime? expiresAt;
   final String createdBy;
+  /// Pre-assigned unit for self-registration QR codes.
+  final String? unitId;
+  final String? unitName;
 
   const Invitation({
     required this.code,
@@ -17,6 +20,8 @@ class Invitation {
     required this.used,
     required this.createdBy,
     this.expiresAt,
+    this.unitId,
+    this.unitName,
   });
 
   factory Invitation.fromDoc(DocumentSnapshot doc) {
@@ -30,6 +35,8 @@ class Invitation {
       used: d['used'] as bool? ?? false,
       createdBy: d['createdBy'] as String? ?? '',
       expiresAt: (d['expiresAt'] as Timestamp?)?.toDate(),
+      unitId: d['unitId'] as String?,
+      unitName: d['unitName'] as String?,
     );
   }
 

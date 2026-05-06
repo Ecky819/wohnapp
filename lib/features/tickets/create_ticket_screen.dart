@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -174,8 +175,44 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
 
   // ─── Submit ───────────────────────────────────────────────────────────────
 
+  Future<bool> _isOffline() async {
+    final results = await Connectivity().checkConnectivity();
+    return !results.contains(ConnectivityResult.wifi) &&
+        !results.contains(ConnectivityResult.mobile) &&
+        !results.contains(ConnectivityResult.ethernet);
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    // Offline gate: warn user if images are attached but no network
+    if (_imageFiles.isNotEmpty && await _isOffline()) {
+      if (!mounted) return;
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Kein Internet'),
+          content: const Text(
+            'Sie sind offline. Das Ticket kann ohne Bilder angelegt werden '
+            '(Bilder können später hinzugefügt werden).\n\n'
+            'Möchten Sie fortfahren?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Abbrechen'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Ohne Bilder anlegen'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+      setState(() => _imageFiles.clear());
+    }
+
     setState(() => _isLoading = true);
 
     try {

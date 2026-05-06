@@ -4,7 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+
 import '../../models/app_user.dart';
+import '../../models/invitation.dart';
+import '../../repositories/invitation_repository.dart';
 import '../../models/building.dart';
 import '../../models/device.dart';
 import '../../models/ticket.dart';
@@ -120,10 +125,10 @@ class _UnitDetailBody extends ConsumerWidget {
                         ),
                       ),
                     ),
-                    if (isManager)
+                    if (isManager) ...[
                       IconButton(
                         icon: const Icon(Icons.qr_code_2_outlined),
-                        tooltip: 'QR-Code',
+                        tooltip: 'Gast-QR',
                         onPressed: () => Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -131,6 +136,12 @@ class _UnitDetailBody extends ConsumerWidget {
                           ),
                         ),
                       ),
+                      IconButton(
+                        icon: const Icon(Icons.person_add_outlined),
+                        tooltip: 'Einladungs-QR für Mieter',
+                        onPressed: () => _showInviteQr(context, ref, unit),
+                      ),
+                    ],
                   ],
                 ),
                 const Divider(height: 24),
@@ -242,6 +253,81 @@ class _UnitDetailBody extends ConsumerWidget {
 
         const SizedBox(height: 80),
       ],
+    );
+  }
+
+  static const _regBaseUrl = 'https://wohnapp-mvp.web.app/register';
+
+  Future<void> _showInviteQr(
+      BuildContext context, WidgetRef ref, Unit unit) async {
+    // Show loading while creating the invitation
+    String? code;
+    try {
+      final tenantId =
+          ref.read(currentUserProvider).valueOrNull?.tenantId ?? '';
+      code = await ref.read(invitationRepositoryProvider).create(
+            tenantId: tenantId,
+            role: InvitationRole.tenantUser,
+            validFor: const Duration(days: 365),
+            unitId: unit.id,
+            unitName: unit.displayName,
+          );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
+    final regUrl = '$_regBaseUrl?code=$code';
+
+    await showDialog<void>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Einladungs-QR'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            QrImageView(data: regUrl, version: QrVersions.auto, size: 220),
+            const SizedBox(height: 8),
+            Text(code!,
+                style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 4)),
+            const SizedBox(height: 4),
+            Text('Wohnung: ${unit.displayName}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 8),
+            const Text(
+              'Mieter scannt diesen QR-Code mit der Kamera-App '
+              'und registriert sich direkt für diese Wohnung.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: regUrl));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Link kopiert')),
+              );
+            },
+            child: const Text('Link kopieren'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Schließen'),
+          ),
+        ],
+      ),
     );
   }
 }

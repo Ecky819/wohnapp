@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import 'features/analytics/analytics_screen.dart';
 import 'features/auth/register_screen.dart';
+import 'features/onboarding/onboarding_screen.dart';
 import 'features/calendar/calendar_screen.dart';
 import 'features/tenants/tenants_screen.dart';
 import 'features/dashboard/contractor_home_screen.dart';
@@ -16,13 +17,18 @@ import 'features/invitations/invitations_screen.dart';
 import 'features/invoices/invoice_detail_screen.dart';
 import 'features/tickets/guest_report_screen.dart';
 import 'features/profile/profile_screen.dart';
+import 'features/settings/bulk_import_screen.dart';
 import 'features/settings/tenant_settings_screen.dart';
+import 'features/statements/manager_statements_screen.dart';
+import 'features/statements/create_statement_screen.dart';
+import 'features/statements/tenant_statements_screen.dart';
 import 'features/reporting/export_screen.dart';
 import 'features/tickets/create_ticket_screen.dart';
 import 'features/tickets/ticket_detail_screen.dart';
 import 'features/tickets/ticket_list_screen.dart';
 import 'login_screen.dart';
 import 'models/app_user.dart';
+import 'repositories/tenant_repository.dart';
 import 'user_provider.dart';
 
 // ─── Route names ─────────────────────────────────────────────────────────────
@@ -30,6 +36,7 @@ import 'user_provider.dart';
 abstract class AppRoutes {
   static const login = '/login';
   static const register = '/register';
+  static const onboarding = '/onboarding';
   static const tenant = '/tenant';
   static const createTicket = 'create-ticket'; // sub-route
   static const myTickets = 'tickets';           // sub-route
@@ -48,6 +55,10 @@ abstract class AppRoutes {
   static const invoiceDetail = '/invoice/:id';
   static const guestReport = '/guest-report';
   static const tenantSettings = '/tenant-settings';
+  static const bulkImport = '/bulk-import';
+  static const statements = '/statements';
+  static const createStatement = '/statements/create';
+  static const tenantStatements = '/my-statements';
 
   static String ticketDetailPath(String id) => '/ticket/$id';
   static String unitDetailPath(String id) => '/unit/$id';
@@ -85,10 +96,28 @@ class _RouterNotifier extends ChangeNotifier {
 
     // Still loading — don't redirect yet
     final userAsync = _ref.read(currentUserProvider);
+    final onOnboarding = loc == AppRoutes.onboarding;
+
     return userAsync.whenOrNull(
       data: (user) {
         if (user == null) return null;
         if (onLogin || onRegister) return _homeForRole(user.role);
+
+        // New manager with no tenant doc → show onboarding wizard
+        if (user.role == 'manager' && !onOnboarding) {
+          final tenantAsync = _ref.read(tenantProvider);
+          return tenantAsync.whenOrNull(
+            data: (tenant) => tenant == null ? AppRoutes.onboarding : null,
+          );
+        }
+        // Onboarding done → redirect away
+        if (onOnboarding && user.role == 'manager') {
+          final tenantAsync = _ref.read(tenantProvider);
+          return tenantAsync.whenOrNull(
+            data: (tenant) =>
+                tenant != null ? AppRoutes.manager : null,
+          );
+        }
         return null;
       },
     );
@@ -120,6 +149,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.login,
         builder: (_, __) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.onboarding,
+        builder: (_, __) => const OnboardingScreen(),
       ),
       GoRoute(
         path: AppRoutes.register,
@@ -203,6 +236,22 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.tenantSettings,
         builder: (_, __) => const TenantSettingsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.bulkImport,
+        builder: (_, __) => const BulkImportScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.statements,
+        builder: (_, __) => const ManagerStatementsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.createStatement,
+        builder: (_, __) => const CreateStatementScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.tenantStatements,
+        builder: (_, __) => const TenantStatementsScreen(),
       ),
       GoRoute(
         path: AppRoutes.guestReport,

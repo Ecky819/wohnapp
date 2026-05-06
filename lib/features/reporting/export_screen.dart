@@ -9,8 +9,10 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../../models/invoice.dart';
+import '../../models/tenant.dart';
 import '../../models/ticket.dart';
 import '../../repositories/invoice_repository.dart';
+import '../../repositories/tenant_repository.dart';
 import '../../ticket_provider.dart';
 import '../../user_provider.dart';
 
@@ -278,51 +280,98 @@ class _InvoiceExportTabState extends ConsumerState<_InvoiceExportTab> {
   bool _exporting = false;
 
   static final _dateFmt = DateFormat('dd.MM.yyyy');
-  static final _datevFmt = DateFormat('ddMMyyyy'); // DATEV date format
+  static final _datevDate = DateFormat('yyyyMMdd');
+  static final _datevTs = DateFormat('yyyyMMddHHmmss');
 
-  // ── DATEV Buchungsstapel CSV ────────────────────────────────────────────────
+  // ── DATEV Buchungsstapel CSV (EXTF-Format, Version 700) ────────────────────
   //
-  // Simplified DATEV format (Buchungsstapel):
-  // Umsatz (Betrag), Soll/Haben-Kennzeichen, WKZ Umsatz, Kurs, Basis-Umsatz,
-  // WKZ Basis-Umsatz, Konto, Gegenkonto (ohne BU-Schlüssel), BU-Schlüssel,
-  // Belegdatum, Belegfeld 1, Belegfeld 2, Skonto, Buchungstext
-  static String _buildDatevCsv(List<Invoice> invoices) {
-    // DATEV header line (simplified, without full DATEV preamble)
-    final rows = <List<dynamic>>[
-      [
-        'Umsatz (netto)',
-        'Soll/Haben',
-        'WKZ',
-        'Kurs',
-        'Basis-Umsatz',
-        'WKZ Basis',
-        'Konto',
-        'Gegenkonto',
-        'BU-Schlüssel',
-        'Belegdatum',
-        'Belegfeld 1',
-        'Buchungstext',
-      ],
-      ...invoices.map((inv) => [
-            inv.amount.toStringAsFixed(2).replaceAll('.', ','),
-            'S', // Soll (Aufwand)
-            'EUR',
-            '', // Kurs (nur Fremdwährung)
-            '', // Basis-Umsatz
-            '',
-            '6300', // Instandhaltung/Reparaturen (Beispielkonto)
-            '1600', // Verbindlichkeiten gegenüber Handwerkern
-            '', // BU-Schlüssel (leer = Standard-Steuerschlüssel)
-            inv.createdAt != null ? _datevFmt.format(inv.createdAt!) : '',
-            inv.id.substring(0, inv.id.length.clamp(0, 12)), // Belegfeld 1 (max 12 Zeichen)
-            '${inv.ticketTitle} – ${inv.contractorName}',
-          ]),
-    ];
-    return const ListToCsvConverter(
+  // Zeile 1: EXTF-Headerzeile mit Beraternr. + Mandantennr.
+  // Zeile 2: Spaltennamen (DATEV-Standard)
+  // Zeile 3+: Buchungszeilen
+  static String _buildDatevCsv(
+    List<Invoice> invoices, {
+    Tenant? tenant,
+    DateTime? from,
+    DateTime? to,
+  }) {
+    final now = DateTime.now();
+    final berater = tenant?.datevConsultantNumber ?? '';
+    final mandant = tenant?.datevClientNumber ?? '';
+    final wjBeginn = _datevDate.format(DateTime(now.year, 1, 1));
+    final datumVon = from != null ? _datevDate.format(from) : wjBeginn;
+    final datumBis = to != null
+        ? _datevDate.format(to)
+        : _datevDate.format(DateTime(now.year, 12, 31));
+    final created = _datevTs.format(now);
+
+    const sep = ';';
+    // EXTF header (29 semicolon-separated fields, no ListToCsv for row 1)
+    final header = '"EXTF"${sep}700${sep}21${sep}"Buchungsstapel"${sep}9'
+        '$sep"$created"000${sep}0$sep$sep$sep'
+        '$sep$berater$sep$mandant$sep$wjBeginn${sep}4'
+        '$sep"$datumVon"$sep"$datumBis"$sep"Rechnungsexport"$sep'
+        '${sep}1${sep}0${sep}0$sep"EUR"$sep$sep$sep$sep$sep'
+        '$sep$sep$sep$sep';
+
+    const conv = ListToCsvConverter(
       fieldDelimiter: ';',
       textDelimiter: '"',
       eol: '\r\n',
-    ).convert(rows);
+    );
+
+    final columnRow = [
+      'Umsatz (ohne Soll/Haben-Kz)',
+      'Soll/Haben-Kennzeichen',
+      'WKZ Umsatz',
+      'Kurs',
+      'Basis-Umsatz',
+      'WKZ Basis-Umsatz',
+      'Konto',
+      'Gegenkonto (ohne BU-Schlüssel)',
+      'BU-Schlüssel',
+      'Belegdatum',
+      'Belegfeld 1',
+      'Belegfeld 2',
+      'Skonto',
+      'Buchungstext',
+      'Postensperre',
+      'Diverse Adressnummer',
+      'Geschäftspartnerbank',
+      'Sachverhalt',
+      'Zinssperre',
+      'Beleglink',
+      'Beleginfo - Art 1',
+      'Beleginfo - Inhalt 1',
+      'Beleginfo - Art 2',
+      'Beleginfo - Inhalt 2',
+    ];
+
+    final dataRows = invoices.map((inv) {
+      final belegdatum = inv.createdAt != null
+          ? DateFormat('ddMM').format(inv.createdAt!)
+          : '';
+      final belegfeld1 = inv.id.substring(0, inv.id.length.clamp(0, 12));
+      final buchungstext =
+          '${inv.ticketTitle.length > 40 ? inv.ticketTitle.substring(0, 40) : inv.ticketTitle} – ${inv.contractorName}';
+      return [
+        inv.amount.toStringAsFixed(2).replaceAll('.', ','),
+        'S',
+        'EUR',
+        '', '', '',
+        '6300', // Instandhaltung/Reparaturen
+        '1600', // Verbindlichkeiten ggü. Handwerkern
+        '',     // BU-Schlüssel (leer = Normalsteuersatz)
+        belegdatum,
+        belegfeld1,
+        '',     // Belegfeld 2
+        '',     // Skonto
+        buchungstext,
+        ...List.filled(10, ''), // remaining optional fields
+      ];
+    }).toList();
+
+    final body = conv.convert([columnRow, ...dataRows]);
+    return '$header\r\n$body';
   }
 
   Future<void> _pickDate({required bool isFrom}) async {
@@ -347,14 +396,15 @@ class _InvoiceExportTabState extends ConsumerState<_InvoiceExportTab> {
     if (invoices.isEmpty) return;
     setState(() => _exporting = true);
     try {
-      final csv = _buildDatevCsv(invoices);
+      final tenant = ref.read(tenantProvider).valueOrNull;
+      final csv = _buildDatevCsv(invoices,
+          tenant: tenant, from: _from, to: _to);
       final bytes = Uint8List.fromList(csv.codeUnits);
       await Printing.sharePdf(
         bytes: bytes,
         filename:
             'datev_rechnungen_${DateTime.now().millisecondsSinceEpoch}.csv',
       );
-      // Mark all exported invoices as 'exported'
       await ref
           .read(invoiceRepositoryProvider)
           .markExported(invoices.map((i) => i.id).toList());

@@ -206,8 +206,12 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
                 context.push(AppRoutes.buildings);
               case 'invitations':
                 context.push('/manager/${AppRoutes.invitations}');
+              case 'statements':
+                context.push(AppRoutes.statements);
               case 'tenantSettings':
                 context.push(AppRoutes.tenantSettings);
+              case 'bulkImport':
+                context.push(AppRoutes.bulkImport);
               case 'profile':
                 context.push(AppRoutes.profile);
             }
@@ -268,11 +272,29 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
               ),
             ),
             PopupMenuItem(
+              value: 'statements',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.description_outlined),
+                title: Text('Jahresabrechnungen'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuItem(
               value: 'tenantSettings',
               child: ListTile(
                 dense: true,
                 leading: Icon(Icons.domain_outlined),
                 title: Text('Mandanten-Einstellungen'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuItem(
+              value: 'bulkImport',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.upload_file_outlined),
+                title: Text('Bulk-Import'),
                 contentPadding: EdgeInsets.zero,
               ),
             ),

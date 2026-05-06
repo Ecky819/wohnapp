@@ -20,6 +20,13 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
   late final TextEditingController _emailCtrl;
   late final TextEditingController _phoneCtrl;
   late final TextEditingController _addressCtrl;
+  late final TextEditingController _holderCtrl;
+  late final TextEditingController _ibanCtrl;
+  late final TextEditingController _bicCtrl;
+  late final TextEditingController _webhookUrlCtrl;
+  late final TextEditingController _webhookSecretCtrl;
+  late final TextEditingController _datevConsultantCtrl;
+  late final TextEditingController _datevClientCtrl;
 
   bool _saving = false;
   bool _initialized = false;
@@ -31,6 +38,13 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
     _emailCtrl.dispose();
     _phoneCtrl.dispose();
     _addressCtrl.dispose();
+    _holderCtrl.dispose();
+    _ibanCtrl.dispose();
+    _bicCtrl.dispose();
+    _webhookUrlCtrl.dispose();
+    _webhookSecretCtrl.dispose();
+    _datevConsultantCtrl.dispose();
+    _datevClientCtrl.dispose();
     super.dispose();
   }
 
@@ -42,6 +56,13 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
     _emailCtrl = TextEditingController(text: tenant.contactEmail ?? '');
     _phoneCtrl = TextEditingController(text: tenant.contactPhone ?? '');
     _addressCtrl = TextEditingController(text: tenant.address ?? '');
+    _holderCtrl = TextEditingController(text: tenant.bankAccountHolder ?? '');
+    _ibanCtrl = TextEditingController(text: tenant.bankIban ?? '');
+    _bicCtrl = TextEditingController(text: tenant.bankBic ?? '');
+    _webhookUrlCtrl = TextEditingController(text: tenant.erpWebhookUrl ?? '');
+    _webhookSecretCtrl = TextEditingController(text: tenant.erpWebhookSecret ?? '');
+    _datevConsultantCtrl = TextEditingController(text: tenant.datevConsultantNumber ?? '');
+    _datevClientCtrl = TextEditingController(text: tenant.datevClientNumber ?? '');
     _initialized = true;
   }
 
@@ -52,6 +73,13 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
     _emailCtrl = TextEditingController();
     _phoneCtrl = TextEditingController();
     _addressCtrl = TextEditingController();
+    _holderCtrl = TextEditingController();
+    _ibanCtrl = TextEditingController();
+    _bicCtrl = TextEditingController();
+    _webhookUrlCtrl = TextEditingController();
+    _webhookSecretCtrl = TextEditingController();
+    _datevConsultantCtrl = TextEditingController();
+    _datevClientCtrl = TextEditingController();
     _initialized = true;
   }
 
@@ -63,16 +91,23 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
     final colorHex =
         colorRaw.isNotEmpty ? '#${colorRaw.replaceAll('#', '')}' : null;
 
+    String? opt(TextEditingController c) =>
+        c.text.trim().isEmpty ? null : c.text.trim();
+
     final tenant = Tenant(
       id: tenantId,
       name: _nameCtrl.text.trim(),
       primaryColorHex: colorHex,
-      contactEmail:
-          _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
-      contactPhone:
-          _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
-      address:
-          _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim(),
+      contactEmail: opt(_emailCtrl),
+      contactPhone: opt(_phoneCtrl),
+      address: opt(_addressCtrl),
+      bankAccountHolder: opt(_holderCtrl),
+      bankIban: opt(_ibanCtrl),
+      bankBic: opt(_bicCtrl),
+      erpWebhookUrl: opt(_webhookUrlCtrl),
+      erpWebhookSecret: opt(_webhookSecretCtrl),
+      datevConsultantNumber: opt(_datevConsultantCtrl),
+      datevClientNumber: opt(_datevClientCtrl),
     );
 
     try {
@@ -209,6 +244,125 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
                       prefixIcon: Icon(Icons.location_on_outlined),
                     ),
                     maxLines: 2,
+                  ),
+
+                  const SizedBox(height: 28),
+                  _sectionTitle('Bankverbindung (SEPA)'),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Wird auf der Jahresabrechnung als Zahlungsempfänger angezeigt.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 12),
+
+                  TextFormField(
+                    controller: _holderCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Kontoinhaber',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.account_balance_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  TextFormField(
+                    controller: _ibanCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'IBAN',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.credit_card_outlined),
+                      hintText: 'DE00 0000 0000 0000 0000 00',
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return null;
+                      final clean = v.replaceAll(' ', '');
+                      if (!RegExp(r'^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$')
+                          .hasMatch(clean)) {
+                        return 'Ungültige IBAN';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 14),
+
+                  TextFormField(
+                    controller: _bicCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'BIC / SWIFT',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.swap_horiz_outlined),
+                      hintText: 'z.B. DEUTDEDB',
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                  ),
+
+                  const SizedBox(height: 28),
+                  _sectionTitle('Integrationen'),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'ERP-Webhook und DATEV-Verbindung für automatischen Datenaustausch.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 12),
+
+                  TextFormField(
+                    controller: _webhookUrlCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'ERP Webhook-URL',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.webhook_outlined),
+                      hintText: 'https://erp.example.com/webhook',
+                    ),
+                    keyboardType: TextInputType.url,
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return null;
+                      if (!v.trim().startsWith('https://')) {
+                        return 'Muss mit https:// beginnen';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 14),
+
+                  TextFormField(
+                    controller: _webhookSecretCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Webhook-Secret (optional)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.key_outlined),
+                      hintText: 'Wird als X-Webhook-Secret Header gesendet',
+                    ),
+                    obscureText: true,
+                  ),
+                  const SizedBox(height: 14),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _datevConsultantCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'DATEV Beraternr.',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.tag_outlined),
+                          ),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _datevClientCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'DATEV Mandantennr.',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.tag_outlined),
+                          ),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                    ],
                   ),
 
                   const SizedBox(height: 32),

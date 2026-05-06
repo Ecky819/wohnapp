@@ -233,6 +233,32 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ─── statements/{statementId} ────────────────────────────────────────────
+    // Jahresabrechnungen (§ 556 BGB): Manager erstellt, Mieter bestätigt Empfang.
+
+    match /statements/{statementId} {
+      // Manager darf alle Abrechnungen seines Mandanten lesen
+      allow read: if isManager() && resource.data.tenantId == userTenantId();
+
+      // Mieter darf nur eigene Abrechnungen lesen (recipientId == uid)
+      allow read: if isAuth() &&
+        resource.data.recipientId == request.auth.uid;
+
+      // Nur Manager darf Abrechnungen anlegen
+      allow create: if isManager() &&
+        request.resource.data.tenantId == userTenantId() &&
+        request.resource.data.createdBy == request.auth.uid;
+
+      // Mieter darf nur Empfang bestätigen (acknowledged-Felder)
+      allow update: if isAuth() &&
+        resource.data.recipientId == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'acknowledgedAt', 'acknowledgedBy']);
+
+      // Manager darf nicht löschen (Audit-Trail)
+      allow delete: if false;
+    }
+
     // ─── tenants/{tenantId} ───────────────────────────────────────────────────
 
     match /tenants/{tenantId} {

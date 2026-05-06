@@ -58,22 +58,25 @@ class _InvitationCard extends StatelessWidget {
   const _InvitationCard({required this.inv});
   final Invitation inv;
 
-  void _showQrDialog(BuildContext context, String code) {
+  static const _regBaseUrl = 'https://wohnapp-mvp.web.app/register';
+
+  void _showQrDialog(BuildContext context, Invitation inv) {
+    final regUrl = '$_regBaseUrl?code=${inv.code}';
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('QR-Code'),
+        title: const Text('Einladungs-QR'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             QrImageView(
-              data: code,
+              data: regUrl,
               version: QrVersions.auto,
               size: 220,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Text(
-              code,
+              inv.code,
               style: const TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 22,
@@ -81,17 +84,28 @@ class _InvitationCard extends StatelessWidget {
                 letterSpacing: 4,
               ),
             ),
+            if (inv.unitName != null) ...[
+              const SizedBox(height: 4),
+              Text('Wohnung: ${inv.unitName}',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            ],
+            const SizedBox(height: 8),
+            const Text(
+              'Mieter scannt diesen QR-Code mit der Kamera-App\num sich direkt zu registrieren.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: Colors.grey),
+            ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () {
-              Clipboard.setData(ClipboardData(text: code));
+              Clipboard.setData(ClipboardData(text: regUrl));
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Code kopiert')),
+                const SnackBar(content: Text('Link kopiert')),
               );
             },
-            child: const Text('Kopieren'),
+            child: const Text('Link kopieren'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -150,7 +164,7 @@ class _InvitationCard extends StatelessWidget {
               tooltip: 'QR-Code anzeigen',
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
-              onPressed: () => _showQrDialog(context, inv.code),
+              onPressed: () => _showQrDialog(context, inv),
             ),
           ],
         ),

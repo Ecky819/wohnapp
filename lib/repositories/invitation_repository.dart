@@ -41,6 +41,8 @@ class InvitationRepository {
     required String tenantId,
     required InvitationRole role,
     Duration validFor = const Duration(days: 7),
+    String? unitId,
+    String? unitName,
   }) async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
     final code = _generateCode();
@@ -52,6 +54,8 @@ class InvitationRepository {
       'createdBy': uid,
       'createdAt': FieldValue.serverTimestamp(),
       'expiresAt': Timestamp.fromDate(DateTime.now().add(validFor)),
+      if (unitId != null) 'unitId': unitId,
+      if (unitName != null) 'unitName': unitName,
     });
 
     return code;

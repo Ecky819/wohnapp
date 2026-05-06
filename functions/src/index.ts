@@ -9,6 +9,7 @@ import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions";
 
 const anthropicApiKey = defineSecret("ANTHROPIC_API_KEY");
+const sendgridApiKey = defineSecret("SENDGRID_API_KEY");
 
 admin.initializeApp();
 
@@ -365,6 +366,203 @@ Regeln:
     }
   }
 );
+
+// ─── Trigger: statement created → E-Mail + ERP-Webhook ───────────────────────
+
+/**
+ * Fires whenever a new Jahresabrechnung is created.
+ * 1. Sends a notification e-mail to the recipient via SendGrid.
+ * 2. Posts a JSON webhook to the ERP endpoint configured in the tenant doc.
+ */
+export const onStatementCreated = onDocumentCreated(
+  {
+    document: "statements/{statementId}",
+    region: "europe-west3",
+    secrets: [sendgridApiKey],
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+
+    const data = snap.data() as Record<string, unknown>;
+    const statementId = event.params.statementId;
+
+    const tenantId = data.tenantId as string;
+    const recipientId = data.recipientId as string;
+    const recipientName = data.recipientName as string;
+    const year = data.year as number;
+    const pdfUrl = data.pdfUrl as string | undefined;
+
+    // ── 1. Load tenant config ──────────────────────────────────────────────
+    const [tenantSnap, userSnap] = await Promise.all([
+      db.collection("tenants").doc(tenantId).get(),
+      db.collection("users").doc(recipientId).get(),
+    ]);
+
+    const tenantData = tenantSnap.data() ?? {};
+    const userData = userSnap.data() ?? {};
+
+    const orgName = (tenantData.name as string | undefined) ?? "Ihre Hausverwaltung";
+    const recipientEmail = userData.email as string | undefined;
+    const erpWebhookUrl = tenantData.erpWebhookUrl as string | undefined;
+    const erpWebhookSecret = tenantData.erpWebhookSecret as string | undefined;
+
+    // ── 2. Send e-mail via SendGrid ────────────────────────────────────────
+    const sgKey = sendgridApiKey.value();
+    if (sgKey && recipientEmail) {
+      try {
+        const totalCosts = calcTotalCosts(data);
+        const advancePayments = (data.advancePayments as number | undefined) ?? 0;
+        const balance = totalCosts - advancePayments;
+        const balanceLabel = balance >= 0
+          ? `Nachzahlung: ${formatEur(balance)}`
+          : `Rückerstattung: ${formatEur(Math.abs(balance))}`;
+
+        const html = `
+<div style="font-family:Arial,sans-serif;max-width:600px;color:#222">
+  <h2 style="color:#4f46e5">${orgName}</h2>
+  <p>Guten Tag ${recipientName},</p>
+  <p>Ihre <strong>Jahresabrechnung ${year}</strong> liegt bereit.</p>
+  <table style="border-collapse:collapse;width:100%;margin:16px 0">
+    <tr><td style="padding:6px 0;color:#666">Ergebnis</td>
+        <td style="padding:6px 0;font-weight:bold">${balanceLabel}</td></tr>
+    <tr><td style="padding:6px 0;color:#666">Gesamtkosten Anteil</td>
+        <td style="padding:6px 0">${formatEur(totalCosts)}</td></tr>
+    <tr><td style="padding:6px 0;color:#666">Geleistete Vorauszahlungen</td>
+        <td style="padding:6px 0">${formatEur(advancePayments)}</td></tr>
+  </table>
+  ${pdfUrl ? `<p><a href="${pdfUrl}" style="background:#4f46e5;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none">PDF herunterladen</a></p>` : ""}
+  <p>Bitte bestätigen Sie den Empfang in der App.</p>
+  <p style="color:#888;font-size:12px">Gemäß § 556 BGB wird Datum und Uhrzeit Ihrer Bestätigung als rechtssicherer Zustellnachweis gespeichert.</p>
+  <hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+  <p style="color:#aaa;font-size:11px">${orgName} · automatisch generiert</p>
+</div>`;
+
+        const resp = await fetch("https://api.sendgrid.com/v3/mail/send", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${sgKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            personalizations: [{ to: [{ email: recipientEmail, name: recipientName }] }],
+            from: { email: "noreply@wohnapp.de", name: orgName },
+            subject: `Jahresabrechnung ${year} – ${orgName}`,
+            content: [{ type: "text/html", value: html }],
+          }),
+        });
+
+        if (resp.ok) {
+          logger.info(`Statement email sent to ${recipientEmail} for ${statementId}`);
+        } else {
+          logger.warn(`SendGrid returned ${resp.status} for ${statementId}`);
+        }
+      } catch (err) {
+        logger.error("onStatementCreated: email failed", err);
+      }
+    } else if (!sgKey) {
+      logger.info("SENDGRID_API_KEY not set – skipping email");
+    }
+
+    // ── 3. Fire ERP webhook ────────────────────────────────────────────────
+    if (erpWebhookUrl) {
+      try {
+        const payload = {
+          event: "statement.created",
+          statementId,
+          tenantId,
+          recipientId,
+          recipientName,
+          year,
+          data,
+        };
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "User-Agent": "Wohnapp/1.0",
+        };
+        if (erpWebhookSecret) {
+          headers["X-Webhook-Secret"] = erpWebhookSecret;
+        }
+        const resp = await fetch(erpWebhookUrl, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(10_000),
+        });
+        logger.info(`ERP webhook fired → ${erpWebhookUrl} : ${resp.status}`);
+      } catch (err) {
+        logger.error("onStatementCreated: ERP webhook failed", err);
+      }
+    }
+  }
+);
+
+// ─── Trigger: invoice status changed → ERP-Webhook ───────────────────────────
+
+/**
+ * When a manager approves or rejects an invoice, POST the event to the
+ * tenant's ERP webhook so the accounting system can react immediately.
+ */
+export const onInvoiceStatusChanged = onDocumentUpdated(
+  { document: "invoices/{invoiceId}", region: "europe-west3" },
+  async (event) => {
+    const before = event.data?.before.data() as Record<string, unknown> | undefined;
+    const after = event.data?.after.data() as Record<string, unknown> | undefined;
+    if (!before || !after) return;
+    if (before.status === after.status) return;
+
+    const newStatus = after.status as string;
+    if (newStatus !== "approved" && newStatus !== "rejected") return;
+
+    const tenantId = after.tenantId as string;
+    const tenantSnap = await db.collection("tenants").doc(tenantId).get();
+    const erpWebhookUrl = tenantSnap.data()?.erpWebhookUrl as string | undefined;
+    const erpWebhookSecret = tenantSnap.data()?.erpWebhookSecret as string | undefined;
+
+    if (!erpWebhookUrl) return;
+
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "User-Agent": "Wohnapp/1.0",
+      };
+      if (erpWebhookSecret) headers["X-Webhook-Secret"] = erpWebhookSecret;
+
+      await fetch(erpWebhookUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          event: `invoice.${newStatus}`,
+          invoiceId: event.params.invoiceId,
+          tenantId,
+          data: after,
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      logger.info(`ERP webhook invoice.${newStatus} fired for ${event.params.invoiceId}`);
+    } catch (err) {
+      logger.error("onInvoiceStatusChanged: webhook failed", err);
+    }
+  }
+);
+
+// ─── Helper: compute total tenant costs from positions array ─────────────────
+
+function calcTotalCosts(data: Record<string, unknown>): number {
+  const positions = (data.positions as Array<Record<string, unknown>> | undefined) ?? [];
+  return positions.reduce((sum, p) => {
+    const total = (p.totalCost as number | undefined) ?? 0;
+    const pct = (p.tenantPercent as number | undefined) ?? 0;
+    return sum + total * pct / 100;
+  }, 0);
+}
+
+function formatEur(amount: number): string {
+  return new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+  }).format(amount);
+}
 
 // ─── Callable: analyzeInvoice (KI-Rechnungsprüfung) ──────────────────────────
 
