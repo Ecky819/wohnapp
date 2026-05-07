@@ -10,11 +10,13 @@ import '../../repositories/activity_repository.dart';
 import '../../models/device.dart';
 import '../../repositories/device_repository.dart';
 import '../../repositories/invoice_repository.dart';
+import '../../repositories/tenant_repository.dart';
 import '../../repositories/ticket_repository.dart';
 import '../../router.dart';
 import '../../ticket_provider.dart';
 import '../../user_provider.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../../widgets/tenant_logo.dart';
 
 const _kPageSize = 20;
 
@@ -175,8 +177,29 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
   }
 
   AppBar _buildNormalAppBar() {
+    final tenant = ref.watch(tenantProvider).valueOrNull;
     return AppBar(
-      title: const Text('Ticket-Board'),
+      title: tenant != null
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TenantLogoAvatar(
+                  name: tenant.name,
+                  primaryColor: tenant.primaryColor,
+                  logoUrl: tenant.logoUrl,
+                  radius: 14,
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    tenant.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ),
+              ],
+            )
+          : const Text('Ticket-Board'),
       actions: [
         // Suche — immer sichtbar
         IconButton(

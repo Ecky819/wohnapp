@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/activity_entry.dart';
 import '../../models/comment.dart';
+import '../../models/insurance_claim.dart';
 import '../../models/invoice.dart';
 import '../../models/ticket.dart';
 import '../../repositories/activity_repository.dart';
@@ -23,6 +24,7 @@ import '../../ticket_provider.dart';
 import '../../user_provider.dart';
 import '../../widgets/app_state_widgets.dart';
 import 'edit_ticket_screen.dart';
+import 'insurance_claim_screen.dart';
 
 class TicketDetailScreen extends ConsumerWidget {
   const TicketDetailScreen({super.key, required this.ticketId});
@@ -237,6 +239,13 @@ class _TicketDetailBody extends ConsumerWidget {
                     fontWeight: FontWeight.w600, fontSize: 15)),
             const SizedBox(height: 8),
             ...ticket.documents.map((doc) => _DocumentTile(doc: doc)),
+          ],
+
+          // Versicherungsfall-Sektion
+          if (ticket.category == 'insurance_claim') ...[
+            const SizedBox(height: 24),
+            const Divider(),
+            _InsuranceClaimSummary(ticket: ticket),
           ],
 
           // Handwerker-Aktionskarte (Annehmen / Ablehnen / Termin)
@@ -1393,3 +1402,131 @@ class _CommentBubble extends StatelessWidget {
     );
   }
 }
+
+// ─── Versicherungsfall-Zusammenfassung im Ticket-Detail ───────────────────────
+
+class _InsuranceClaimSummary extends StatelessWidget {
+  const _InsuranceClaimSummary({required this.ticket});
+  final Ticket ticket;
+
+  static final _dateFmt = DateFormat('dd.MM.yyyy');
+  static final _eurFmt =
+      NumberFormat.currency(locale: 'de_DE', symbol: '€');
+
+  @override
+  Widget build(BuildContext context) {
+    final claim = ticket.insuranceClaim;
+    final status = claim?.status ?? ClaimStatus.reported;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.security_outlined,
+                color: Theme.of(context).colorScheme.primary, size: 18),
+            const SizedBox(width: 8),
+            const Text('Versicherungsfall',
+                style:
+                    TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            const Spacer(),
+            // Status-Chip
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: status.color.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(status.icon, size: 13, color: status.color),
+                  const SizedBox(width: 4),
+                  Text(status.label,
+                      style: TextStyle(
+                          color: status.color,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        if (claim != null) ...[
+          const SizedBox(height: 12),
+          // Key facts
+          if (claim.insurerName.isNotEmpty)
+            _ClaimRow(
+                icon: Icons.business_outlined,
+                label: 'Versicherung',
+                value: claim.insurerName),
+          if (claim.claimNumber != null)
+            _ClaimRow(
+                icon: Icons.confirmation_number_outlined,
+                label: 'Schadennummer',
+                value: claim.claimNumber!),
+          if (claim.estimatedDamage != null)
+            _ClaimRow(
+                icon: Icons.calculate_outlined,
+                label: 'Geschätzter Schaden',
+                value: _eurFmt.format(claim.estimatedDamage)),
+          if (claim.approvedAmount != null)
+            _ClaimRow(
+                icon: Icons.euro_outlined,
+                label: 'Genehmigter Betrag',
+                value: _eurFmt.format(claim.approvedAmount)),
+          if (claim.reportedAt != null)
+            _ClaimRow(
+                icon: Icons.calendar_today_outlined,
+                label: 'Gemeldet am',
+                value: _dateFmt.format(claim.reportedAt!)),
+        ],
+
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          icon: const Icon(Icons.open_in_new_outlined, size: 16),
+          label: const Text('Versicherungsfall verwalten'),
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) =>
+                  InsuranceClaimScreen(ticketId: ticket.id),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ClaimRow extends StatelessWidget {
+  const _ClaimRow(
+      {required this.icon, required this.label, required this.value});
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: Colors.grey),
+          const SizedBox(width: 8),
+          Text('$label: ',
+              style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          Expanded(
+            child: Text(value,
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w500),
+                overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

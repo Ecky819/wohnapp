@@ -1,3 +1,5 @@
+import 'notification_preferences.dart';
+
 class AppUser {
   final String uid;
   final String email;
@@ -8,6 +10,7 @@ class AppUser {
   final List<String> specializations;
   /// Assigned unit id (tenant_user only).
   final String? unitId;
+  final NotificationPreferences notificationPreferences;
 
   const AppUser({
     required this.uid,
@@ -17,6 +20,7 @@ class AppUser {
     required this.tenantId,
     this.specializations = const [],
     this.unitId,
+    this.notificationPreferences = const NotificationPreferences(),
   });
 
   factory AppUser.fromMap(String uid, Map<String, dynamic> map) {
@@ -28,6 +32,9 @@ class AppUser {
       tenantId: map['tenantId'] as String? ?? '',
       specializations: List<String>.from(map['specializations'] ?? []),
       unitId: map['unitId'] as String?,
+      notificationPreferences: NotificationPreferences.fromMap(
+        map['notificationPreferences'] as Map<String, dynamic>?,
+      ),
     );
   }
 

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -21,6 +23,20 @@ class TenantRepository {
 
   Future<void> upsertTenant(Tenant tenant) async {
     await _tenants.doc(tenant.id).set(tenant.toMap(), SetOptions(merge: true));
+  }
+
+  Future<void> updateLogoUrl(String tenantId, String? logoUrl) async {
+    await _tenants.doc(tenantId).update({'logoUrl': logoUrl});
+  }
+
+  /// Generates a new random 32-character IoT webhook key and saves it.
+  Future<String> generateIotKey(String tenantId) async {
+    const chars =
+        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    final rng = Random.secure();
+    final key = List.generate(32, (_) => chars[rng.nextInt(chars.length)]).join();
+    await _tenants.doc(tenantId).update({'iotWebhookKey': key});
+    return key;
   }
 }
 

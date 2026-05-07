@@ -21,6 +21,11 @@ class Tenant {
     this.erpWebhookSecret,
     this.datevConsultantNumber,
     this.datevClientNumber,
+    this.iotWebhookKey,
+    this.sapWebhookUrl,
+    this.sapWebhookSecret,
+    this.sapCompanyDb,
+    this.sapCostCenter,
   });
 
   final String id;
@@ -39,6 +44,11 @@ class Tenant {
   final String? erpWebhookSecret;
   final String? datevConsultantNumber;
   final String? datevClientNumber;
+  final String? iotWebhookKey;
+  final String? sapWebhookUrl;       // SAP Middleware / Service Layer URL
+  final String? sapWebhookSecret;    // API-Key oder Basic-Auth-Token
+  final String? sapCompanyDb;        // SAP Business One: Company Database
+  final String? sapCostCenter;       // Standard-Kostenstelle für Buchungen
 
   /// Converts a stored hex string (e.g. '#6366F1' or '6366F1') to a Color.
   static Color? _hexToColor(String? hex) {
@@ -74,6 +84,11 @@ class Tenant {
       erpWebhookSecret: data['erpWebhookSecret'] as String?,
       datevConsultantNumber: data['datevConsultantNumber'] as String?,
       datevClientNumber: data['datevClientNumber'] as String?,
+      iotWebhookKey: data['iotWebhookKey'] as String?,
+      sapWebhookUrl: data['sapWebhookUrl'] as String?,
+      sapWebhookSecret: data['sapWebhookSecret'] as String?,
+      sapCompanyDb: data['sapCompanyDb'] as String?,
+      sapCostCenter: data['sapCostCenter'] as String?,
     );
   }
 
@@ -93,5 +108,10 @@ class Tenant {
         if (erpWebhookSecret != null) 'erpWebhookSecret': erpWebhookSecret,
         if (datevConsultantNumber != null) 'datevConsultantNumber': datevConsultantNumber,
         if (datevClientNumber != null) 'datevClientNumber': datevClientNumber,
+        if (iotWebhookKey != null) 'iotWebhookKey': iotWebhookKey,
+        if (sapWebhookUrl != null) 'sapWebhookUrl': sapWebhookUrl,
+        if (sapWebhookSecret != null) 'sapWebhookSecret': sapWebhookSecret,
+        if (sapCompanyDb != null) 'sapCompanyDb': sapCompanyDb,
+        if (sapCostCenter != null) 'sapCostCenter': sapCostCenter,
       };
 }

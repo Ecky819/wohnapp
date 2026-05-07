@@ -44,8 +44,7 @@ class CreateStatementScreen extends ConsumerStatefulWidget {
       _CreateStatementScreenState();
 }
 
-class _CreateStatementScreenState
-    extends ConsumerState<CreateStatementScreen> {
+class _CreateStatementScreenState extends ConsumerState<CreateStatementScreen> {
   final _formKey = GlobalKey<FormState>();
   final _advanceCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
@@ -155,18 +154,23 @@ class _CreateStatementScreenState
         for (int i = 0; i < draft.images.length; i++) {
           final fileName =
               '${draft.label}_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
-          final url =
-              await repo.uploadReceiptImage(orgId, fileName, draft.images[i]);
+          final url = await repo.uploadReceiptImage(
+            orgId,
+            fileName,
+            draft.images[i],
+          );
           urls.add(url);
         }
-        uploadedPositions.add(StatementPosition(
-          category: draft.category,
-          label: draft.label,
-          totalCost: draft.totalCost,
-          distributionKey: draft.distributionKey,
-          tenantPercent: draft.tenantPercent,
-          receiptImageUrls: urls,
-        ));
+        uploadedPositions.add(
+          StatementPosition(
+            category: draft.category,
+            label: draft.label,
+            totalCost: draft.totalCost,
+            distributionKey: draft.distributionKey,
+            tenantPercent: draft.tenantPercent,
+            receiptImageUrls: urls,
+          ),
+        );
         if (draft.images.isNotEmpty) {
           imageBytesMap[draft.label] = draft.images;
         }
@@ -206,7 +210,8 @@ class _CreateStatementScreenState
       final pdfUrl = await repo.uploadPdf(orgId, pdfFileName, pdfBytes);
 
       // 4. Firestore-Dokument anlegen
-      if (mounted) setState(() => _savingStep = 'Abrechnung wird gespeichert …');
+      if (mounted)
+        setState(() => _savingStep = 'Abrechnung wird gespeichert …');
       final finalStmt = AnnualStatement(
         id: '',
         tenantId: stmt.tenantId,
@@ -237,10 +242,12 @@ class _CreateStatementScreenState
   }
 
   void _snack(String msg, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg),
-      backgroundColor: isError ? Colors.red : null,
-    ));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: isError ? Colors.red : null,
+      ),
+    );
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -268,46 +275,46 @@ class _CreateStatementScreenState
                               style: TextStyle(color: Colors.grey),
                             )
                           : DropdownButtonFormField<AppUser>(
-                              value: _selectedTenant,
+                              initialValue: _selectedTenant,
                               decoration: const InputDecoration(
                                 labelText: 'Mieter',
                                 border: OutlineInputBorder(),
                                 prefixIcon: Icon(Icons.person_outline),
                               ),
                               items: _tenants
-                                  .map((t) => DropdownMenuItem(
-                                        value: t,
-                                        child: Text(
-                                          t.name.isNotEmpty
-                                              ? t.name
-                                              : t.email,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ))
+                                  .map(
+                                    (t) => DropdownMenuItem(
+                                      value: t,
+                                      child: Text(
+                                        t.name.isNotEmpty ? t.name : t.email,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  )
                                   .toList(),
                               onChanged: (v) =>
                                   setState(() => _selectedTenant = v),
-                              validator: (v) => v == null
-                                  ? 'Bitte Mieter auswählen'
-                                  : null,
+                              validator: (v) =>
+                                  v == null ? 'Bitte Mieter auswählen' : null,
                             ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<int>(
-                        value: _year,
+                        initialValue: _year,
                         decoration: const InputDecoration(
                           labelText: 'Abrechnungsjahr',
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.calendar_today_outlined),
                         ),
-                        items: List.generate(
-                                5, (i) => DateTime.now().year - 1 - i)
-                            .map((y) => DropdownMenuItem(
-                                  value: y,
-                                  child: Text('$y  (01.01.$y – 31.12.$y)'),
-                                ))
-                            .toList(),
-                        onChanged: (v) =>
-                            setState(() => _year = v ?? _year),
+                        items:
+                            List.generate(5, (i) => DateTime.now().year - 1 - i)
+                                .map(
+                                  (y) => DropdownMenuItem(
+                                    value: y,
+                                    child: Text('$y  (01.01.$y – 31.12.$y)'),
+                                  ),
+                                )
+                                .toList(),
+                        onChanged: (v) => setState(() => _year = v ?? _year),
                       ),
                     ],
                   ),
@@ -326,14 +333,14 @@ class _CreateStatementScreenState
                           prefixIcon: Icon(Icons.payments_outlined),
                         ),
                         keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
+                          decimal: true,
+                        ),
                         onChanged: (_) => setState(() {}),
                         validator: (v) {
                           if (v == null || v.isEmpty) {
                             return 'Bitte Vorauszahlungen eingeben (0 falls keine)';
                           }
-                          if (double.tryParse(v.replaceAll(',', '.')) ==
-                              null) {
+                          if (double.tryParse(v.replaceAll(',', '.')) == null) {
                             return 'Ungültiger Betrag';
                           }
                           return null;
@@ -365,14 +372,15 @@ class _CreateStatementScreenState
                           ),
                         )
                       else
-                        ..._positions.asMap().entries.map((e) =>
-                            _PositionCard(
-                              draft: e.value,
-                              currency: _currency,
-                              onEdit: () => _editPosition(e.key),
-                              onDelete: () =>
-                                  setState(() => _positions.removeAt(e.key)),
-                            )),
+                        ..._positions.asMap().entries.map(
+                          (e) => _PositionCard(
+                            draft: e.value,
+                            currency: _currency,
+                            onEdit: () => _editPosition(e.key),
+                            onDelete: () =>
+                                setState(() => _positions.removeAt(e.key)),
+                          ),
+                        ),
                     ],
                   ),
 
@@ -411,17 +419,19 @@ class _CreateStatementScreenState
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.gavel_outlined,
-                            size: 16,
-                            color: Theme.of(context).colorScheme.primary),
+                        Icon(
+                          Icons.gavel_outlined,
+                          size: 16,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
                         const SizedBox(width: 8),
                         const Expanded(
                           child: Text(
@@ -461,19 +471,21 @@ class _SavingOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircularProgressIndicator(),
-              const SizedBox(height: 24),
-              Text(step,
-                  style: const TextStyle(fontSize: 15),
-                  textAlign: TextAlign.center),
-            ],
+    body: Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 24),
+          Text(
+            step,
+            style: const TextStyle(fontSize: 15),
+            textAlign: TextAlign.center,
           ),
-        ),
-      );
+        ],
+      ),
+    ),
+  );
 }
 
 // ─── Balance card ─────────────────────────────────────────────────────────────
@@ -501,14 +513,15 @@ class _BalanceCard extends StatelessWidget {
             : Colors.green.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-            color: isNach
-                ? Colors.orange.shade300
-                : Colors.green.shade300),
+          color: isNach ? Colors.orange.shade300 : Colors.green.shade300,
+        ),
       ),
       child: Column(
         children: [
-          _Row('Summe Betriebskosten (Mieteranteil)',
-              currency.format(totalCosts)),
+          _Row(
+            'Summe Betriebskosten (Mieteranteil)',
+            currency.format(totalCosts),
+          ),
           const Divider(height: 16),
           _Row('Vorauszahlungen', '– ${currency.format(advance)}'),
           const SizedBox(height: 8),
@@ -525,8 +538,7 @@ class _BalanceCard extends StatelessWidget {
 }
 
 class _Row extends StatelessWidget {
-  const _Row(this.label, this.value,
-      {this.bold = false, this.color});
+  const _Row(this.label, this.value, {this.bold = false, this.color});
   final String label;
   final String value;
   final bool bold;
@@ -534,21 +546,25 @@ class _Row extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style: TextStyle(
-                  fontWeight:
-                      bold ? FontWeight.bold : FontWeight.normal,
-                  fontSize: bold ? 14 : 13)),
-          Text(value,
-              style: TextStyle(
-                  fontWeight:
-                      bold ? FontWeight.bold : FontWeight.normal,
-                  fontSize: bold ? 14 : 13,
-                  color: color)),
-        ],
-      );
+    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    children: [
+      Text(
+        label,
+        style: TextStyle(
+          fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+          fontSize: bold ? 14 : 13,
+        ),
+      ),
+      Text(
+        value,
+        style: TextStyle(
+          fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+          fontSize: bold ? 14 : 13,
+          color: color,
+        ),
+      ),
+    ],
+  );
 }
 
 // ─── Position card ────────────────────────────────────────────────────────────
@@ -571,9 +587,10 @@ class _PositionCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: const Icon(Icons.receipt_long_outlined, size: 20),
-        title: Text(draft.label,
-            style: const TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w600)),
+        title: Text(
+          draft.label,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
         subtitle: Text(
           '${currency.format(draft.totalCost)} gesamt · '
           '${draft.tenantPercent.toStringAsFixed(1)} % = '
@@ -587,20 +604,26 @@ class _PositionCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(right: 4),
                 child: Chip(
-                  label: Text('${draft.images.length} Bild(er)',
-                      style: const TextStyle(fontSize: 10)),
+                  label: Text(
+                    '${draft.images.length} Bild(er)',
+                    style: const TextStyle(fontSize: 10),
+                  ),
                   padding: EdgeInsets.zero,
-                  materialTapTargetSize:
-                      MaterialTapTargetSize.shrinkWrap,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
               ),
             IconButton(
-                icon: const Icon(Icons.edit_outlined, size: 18),
-                onPressed: onEdit),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              onPressed: onEdit,
+            ),
             IconButton(
-                icon: const Icon(Icons.delete_outline,
-                    size: 18, color: Colors.red),
-                onPressed: onDelete),
+              icon: const Icon(
+                Icons.delete_outline,
+                size: 18,
+                color: Colors.red,
+              ),
+              onPressed: onDelete,
+            ),
           ],
         ),
         isThreeLine: false,
@@ -612,35 +635,32 @@ class _PositionCard extends StatelessWidget {
 // ─── Section helper ───────────────────────────────────────────────────────────
 
 class _Section extends StatelessWidget {
-  const _Section(
-      {required this.title,
-      required this.children,
-      this.trailing});
+  const _Section({required this.title, required this.children, this.trailing});
   final String title;
   final List<Widget> children;
   final Widget? trailing;
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
         children: [
-          Row(
-            children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                      letterSpacing: 0.3)),
-              if (trailing != null) ...[
-                const Spacer(),
-                trailing!,
-              ],
-            ],
+          Text(
+            title,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              letterSpacing: 0.3,
+            ),
           ),
-          const SizedBox(height: 10),
-          ...children,
+          if (trailing != null) ...[const Spacer(), trailing!],
         ],
-      );
+      ),
+      const SizedBox(height: 10),
+      ...children,
+    ],
+  );
 }
 
 // ─── Position Sheet ───────────────────────────────────────────────────────────
@@ -688,26 +708,29 @@ class _PositionSheetState extends State<_PositionSheet> {
 
   Future<void> _pickImages() async {
     final picker = ImagePicker();
-    final picked =
-        await picker.pickMultiImage(imageQuality: 80, maxWidth: 1600);
+    final picked = await picker.pickMultiImage(
+      imageQuality: 80,
+      maxWidth: 1600,
+    );
     if (picked.isEmpty) return;
-    final bytes =
-        await Future.wait(picked.map((f) => f.readAsBytes()));
+    final bytes = await Future.wait(picked.map((f) => f.readAsBytes()));
     setState(() => _images.addAll(bytes));
   }
 
   void _save() {
     if (!_formKey.currentState!.validate()) return;
-    widget.onSave(_PositionDraft(
-      category: _category,
-      label: _labelCtrl.text.trim(),
-      totalCost:
-          double.parse(_totalCtrl.text.trim().replaceAll(',', '.')),
-      distributionKey: _distKey,
-      tenantPercent:
-          double.parse(_percentCtrl.text.trim().replaceAll(',', '.')),
-      images: _images,
-    ));
+    widget.onSave(
+      _PositionDraft(
+        category: _category,
+        label: _labelCtrl.text.trim(),
+        totalCost: double.parse(_totalCtrl.text.trim().replaceAll(',', '.')),
+        distributionKey: _distKey,
+        tenantPercent: double.parse(
+          _percentCtrl.text.trim().replaceAll(',', '.'),
+        ),
+        images: _images,
+      ),
+    );
     Navigator.pop(context);
   }
 
@@ -715,7 +738,11 @@ class _PositionSheetState extends State<_PositionSheet> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.fromLTRB(
-          20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+        20,
+        20,
+        20,
+        MediaQuery.of(context).viewInsets.bottom + 20,
+      ),
       child: Form(
         key: _formKey,
         child: SingleChildScrollView(
@@ -728,31 +755,35 @@ class _PositionSheetState extends State<_PositionSheet> {
                     ? 'Position hinzufügen'
                     : 'Position bearbeiten',
                 style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.bold),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 16),
 
               // ── Kategorie ─────────────────────────────────────────
               DropdownButtonFormField<BetriebskostenCategory>(
-                value: _category,
+                initialValue: _category,
                 decoration: const InputDecoration(
                   labelText: 'Kategorie (§ 2 BetrKV)',
                   border: OutlineInputBorder(),
                 ),
                 items: BetriebskostenCategory.values
-                    .map((c) => DropdownMenuItem(
-                          value: c,
-                          child: Text(c.label,
-                              overflow: TextOverflow.ellipsis),
-                        ))
+                    .map(
+                      (c) => DropdownMenuItem(
+                        value: c,
+                        child: Text(c.label, overflow: TextOverflow.ellipsis),
+                      ),
+                    )
                     .toList(),
                 onChanged: (c) {
                   if (c == null) return;
                   setState(() {
                     _category = c;
                     if (_labelCtrl.text.isEmpty ||
-                        BetriebskostenCategory.values
-                            .any((e) => e.label == _labelCtrl.text)) {
+                        BetriebskostenCategory.values.any(
+                          (e) => e.label == _labelCtrl.text,
+                        )) {
                       _labelCtrl.text = c.label;
                     }
                   });
@@ -767,9 +798,8 @@ class _PositionSheetState extends State<_PositionSheet> {
                   labelText: 'Bezeichnung (anpassbar)',
                   border: OutlineInputBorder(),
                 ),
-                validator: (v) => v == null || v.trim().isEmpty
-                    ? 'Pflichtfeld'
-                    : null,
+                validator: (v) =>
+                    v == null || v.trim().isEmpty ? 'Pflichtfeld' : null,
               ),
               const SizedBox(height: 12),
 
@@ -783,16 +813,14 @@ class _PositionSheetState extends State<_PositionSheet> {
                         labelText: 'Gesamtkosten (€)',
                         border: OutlineInputBorder(),
                       ),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(
-                              decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       validator: (v) {
                         if (v == null || v.isEmpty) {
                           return 'Pflichtfeld';
                         }
-                        if (double.tryParse(
-                                v.replaceAll(',', '.')) ==
-                            null) {
+                        if (double.tryParse(v.replaceAll(',', '.')) == null) {
                           return 'Ungültig';
                         }
                         return null;
@@ -807,15 +835,14 @@ class _PositionSheetState extends State<_PositionSheet> {
                         labelText: 'Ihr Anteil (%)',
                         border: OutlineInputBorder(),
                       ),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(
-                              decimal: true),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
                       validator: (v) {
                         if (v == null || v.isEmpty) {
                           return 'Pflichtfeld';
                         }
-                        final d = double.tryParse(
-                            v.replaceAll(',', '.'));
+                        final d = double.tryParse(v.replaceAll(',', '.'));
                         if (d == null || d < 0 || d > 100) {
                           return '0–100';
                         }
@@ -829,16 +856,15 @@ class _PositionSheetState extends State<_PositionSheet> {
 
               // ── Umlageschlüssel ───────────────────────────────────
               DropdownButtonFormField<DistributionKey>(
-                value: _distKey,
+                initialValue: _distKey,
                 decoration: const InputDecoration(
                   labelText: 'Umlageschlüssel',
                   border: OutlineInputBorder(),
                 ),
                 items: DistributionKey.values
-                    .map((k) => DropdownMenuItem(
-                          value: k,
-                          child: Text(k.label),
-                        ))
+                    .map(
+                      (k) => DropdownMenuItem(value: k, child: Text(k.label)),
+                    )
                     .toList(),
                 onChanged: (k) {
                   if (k != null) setState(() => _distKey = k);
@@ -849,13 +875,16 @@ class _PositionSheetState extends State<_PositionSheet> {
               // ── Belegbilder ───────────────────────────────────────
               Row(
                 children: [
-                  const Text('Belegbilder',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 13)),
+                  const Text(
+                    'Belegbilder',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
                   const Spacer(),
                   TextButton.icon(
-                    icon: const Icon(Icons.add_photo_alternate_outlined,
-                        size: 16),
+                    icon: const Icon(
+                      Icons.add_photo_alternate_outlined,
+                      size: 16,
+                    ),
                     label: const Text('Bilder hinzufügen'),
                     onPressed: _pickImages,
                   ),
@@ -868,8 +897,7 @@ class _PositionSheetState extends State<_PositionSheet> {
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: _images.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(width: 8),
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
                     itemBuilder: (_, i) => Stack(
                       children: [
                         ClipRRect(
@@ -885,16 +913,17 @@ class _PositionSheetState extends State<_PositionSheet> {
                           top: 2,
                           right: 2,
                           child: GestureDetector(
-                            onTap: () => setState(
-                                () => _images.removeAt(i)),
+                            onTap: () => setState(() => _images.removeAt(i)),
                             child: Container(
                               decoration: BoxDecoration(
                                 color: Colors.black54,
-                                borderRadius:
-                                    BorderRadius.circular(10),
+                                borderRadius: BorderRadius.circular(10),
                               ),
-                              child: const Icon(Icons.close,
-                                  size: 14, color: Colors.white),
+                              child: const Icon(
+                                Icons.close,
+                                size: 14,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
                         ),
@@ -907,10 +936,9 @@ class _PositionSheetState extends State<_PositionSheet> {
               Text(
                 '§ 259 BGB: Mieter haben Anspruch auf Kopien der Belege.',
                 style: TextStyle(
-                    fontSize: 10,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .onSurfaceVariant),
+                  fontSize: 10,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
 
               const SizedBox(height: 20),
@@ -919,9 +947,11 @@ class _PositionSheetState extends State<_PositionSheet> {
                 width: double.infinity,
                 child: FilledButton(
                   onPressed: _save,
-                  child: Text(widget.existing == null
-                      ? 'Position hinzufügen'
-                      : 'Speichern'),
+                  child: Text(
+                    widget.existing == null
+                        ? 'Position hinzufügen'
+                        : 'Speichern',
+                  ),
                 ),
               ),
             ],

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/app_user.dart';
 import '../models/invitation.dart';
+import '../models/notification_preferences.dart';
 
 class UserRepository {
   UserRepository(this._firestore);
@@ -54,6 +55,25 @@ class UserRepository {
 
   Future<void> assignUnit(String uid, String? unitId) {
     return _users.doc(uid).update({'unitId': unitId});
+  }
+
+  Future<void> updateNotificationPreferences(
+    String uid,
+    NotificationPreferences prefs,
+  ) {
+    return _users.doc(uid).update({
+      'notificationPreferences': prefs.toMap(),
+    });
+  }
+
+  /// Lädt die Benachrichtigungseinstellungen eines Users (für Server-seitige
+  /// Checks im NotificationService, bevor eine Notification geschrieben wird).
+  Future<NotificationPreferences> getPreferences(String uid) async {
+    final doc = await _users.doc(uid).get();
+    if (!doc.exists) return const NotificationPreferences();
+    return NotificationPreferences.fromMap(
+      doc.data()?['notificationPreferences'] as Map<String, dynamic>?,
+    );
   }
 
   Stream<List<AppUser>> watchTenants(String tenantId) {

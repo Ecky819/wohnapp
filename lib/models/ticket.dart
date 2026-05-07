@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart' show Color, Colors, IconData, Icons;
 
+import 'insurance_claim.dart';
+
 class Ticket {
   final String id;
   final String title;
@@ -21,6 +23,7 @@ class Ticket {
   final DateTime? scheduledAt;
   final List<Map<String, String>> documents;
   final bool archived;
+  final InsuranceClaim? insuranceClaim;
 
   const Ticket({
     required this.id,
@@ -42,9 +45,10 @@ class Ticket {
     this.scheduledAt,
     this.documents = const [],
     this.archived = false,
+    this.insuranceClaim,
   });
 
-  final String category; // 'damage' | 'maintenance'
+  final String category; // 'damage' | 'maintenance' | 'insurance_claim'
 
   factory Ticket.fromDoc(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -70,14 +74,28 @@ class Ticket {
           .map((e) => Map<String, String>.from(e as Map))
           .toList(),
       archived: data['archived'] as bool? ?? false,
+      insuranceClaim: data['insuranceClaim'] != null
+          ? InsuranceClaim.fromMap(
+              Map<String, dynamic>.from(data['insuranceClaim'] as Map))
+          : null,
     );
   }
 
-  String get categoryLabel =>
-      category == 'maintenance' ? 'Wartung' : 'Schaden';
+  String get categoryLabel {
+    switch (category) {
+      case 'maintenance':    return 'Wartung';
+      case 'insurance_claim': return 'Versicherungsfall';
+      default:               return 'Schaden';
+    }
+  }
 
-  IconData get categoryIcon =>
-      category == 'maintenance' ? Icons.build_circle_outlined : Icons.report_problem_outlined;
+  IconData get categoryIcon {
+    switch (category) {
+      case 'maintenance':    return Icons.build_circle_outlined;
+      case 'insurance_claim': return Icons.security_outlined;
+      default:               return Icons.report_problem_outlined;
+    }
+  }
 
   String get statusLabel {
     switch (status) {

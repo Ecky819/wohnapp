@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../models/building.dart';
+import '../../models/insurance_claim.dart';
 import '../../models/unit.dart';
 import '../../repositories/activity_repository.dart';
 import '../../repositories/building_repository.dart';
@@ -38,6 +39,10 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   Building? _selectedBuilding;
   Unit? _selectedUnit;
   DateTime? _scheduledAt;
+
+  // Insurance claim initial fields
+  final _insurerCtrl = TextEditingController();
+  final _policyCtrl = TextEditingController();
 
   RankedContractor? _routingSuggestion;
   RankedContractor? _acceptedSuggestion;
@@ -233,6 +238,16 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
             images: _imageFiles,
             documents: _documents,
             activityRepo: ref.read(activityRepositoryProvider),
+            insuranceClaim: _category == 'insurance_claim'
+                ? InsuranceClaim(
+                    status: ClaimStatus.reported,
+                    insurerName: _insurerCtrl.text.trim(),
+                    policyNumber: _policyCtrl.text.trim().isEmpty
+                        ? null
+                        : _policyCtrl.text.trim(),
+                    reportedAt: DateTime.now(),
+                  )
+                : null,
           );
 
       // Auto-assign if manager accepted routing suggestion
@@ -278,6 +293,8 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
+    _insurerCtrl.dispose();
+    _policyCtrl.dispose();
     super.dispose();
   }
 
@@ -314,11 +331,42 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                     label: Text('Wartung'),
                     icon: Icon(Icons.build_circle_outlined),
                   ),
+                  ButtonSegment(
+                    value: 'insurance_claim',
+                    label: Text('Versicherung'),
+                    icon: Icon(Icons.security_outlined),
+                  ),
                 ],
                 selected: {_category},
                 onSelectionChanged: (s) =>
                     setState(() => _category = s.first),
               ),
+
+              // Versicherungsfall-Initialfelder
+              if (_category == 'insurance_claim') ...[
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _insurerCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Versicherungsgesellschaft *',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.business_outlined),
+                  ),
+                  validator: (v) => (_category == 'insurance_claim' &&
+                          (v == null || v.trim().isEmpty))
+                      ? 'Pflichtfeld'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _policyCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Policennummer (optional)',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.tag_outlined),
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
 
               const Text('Priorität',

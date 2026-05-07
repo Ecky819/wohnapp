@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart' show IconData, Icons;
 
+import 'sensor_reading.dart';
+
 enum MaintenanceStatus { overdue, dueSoon, ok, unknown }
 
 extension MaintenanceStatusX on MaintenanceStatus {
@@ -97,6 +99,7 @@ class Device {
     this.lastServiceAt,
     this.warrantyUntil,
     this.serviceIntervalMonths,
+    this.sensorThresholds = const {},
   });
 
   final String id;
@@ -112,6 +115,8 @@ class Device {
   final DateTime? warrantyUntil;
   /// Configured maintenance interval in months. Null → use category default.
   final int? serviceIntervalMonths;
+  /// Sensor-Schwellwerte: sensorType → { min, max }
+  final Map<String, SensorThreshold> sensorThresholds;
 
   int get effectiveIntervalMonths =>
       serviceIntervalMonths ?? category.defaultIntervalMonths;
@@ -156,7 +161,16 @@ class Device {
       lastServiceAt: (data['lastServiceAt'] as Timestamp?)?.toDate(),
       warrantyUntil: (data['warrantyUntil'] as Timestamp?)?.toDate(),
       serviceIntervalMonths: data['serviceIntervalMonths'] as int?,
+      sensorThresholds: _parseThresholds(
+          data['sensorThresholds'] as Map<String, dynamic>?),
     );
+  }
+
+  static Map<String, SensorThreshold> _parseThresholds(
+      Map<String, dynamic>? raw) {
+    if (raw == null) return {};
+    return raw.map((k, v) =>
+        MapEntry(k, SensorThreshold.fromMap(Map<String, dynamic>.from(v as Map))));
   }
 
   bool get warrantyActive =>

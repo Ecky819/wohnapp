@@ -1,5 +1,9 @@
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../models/tenant.dart';
 import '../../repositories/tenant_repository.dart';
@@ -27,6 +31,10 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
   late final TextEditingController _webhookSecretCtrl;
   late final TextEditingController _datevConsultantCtrl;
   late final TextEditingController _datevClientCtrl;
+  late final TextEditingController _sapWebhookUrlCtrl;
+  late final TextEditingController _sapWebhookSecretCtrl;
+  late final TextEditingController _sapCompanyDbCtrl;
+  late final TextEditingController _sapCostCenterCtrl;
 
   bool _saving = false;
   bool _initialized = false;
@@ -45,6 +53,10 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
     _webhookSecretCtrl.dispose();
     _datevConsultantCtrl.dispose();
     _datevClientCtrl.dispose();
+    _sapWebhookUrlCtrl.dispose();
+    _sapWebhookSecretCtrl.dispose();
+    _sapCompanyDbCtrl.dispose();
+    _sapCostCenterCtrl.dispose();
     super.dispose();
   }
 
@@ -63,6 +75,10 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
     _webhookSecretCtrl = TextEditingController(text: tenant.erpWebhookSecret ?? '');
     _datevConsultantCtrl = TextEditingController(text: tenant.datevConsultantNumber ?? '');
     _datevClientCtrl = TextEditingController(text: tenant.datevClientNumber ?? '');
+    _sapWebhookUrlCtrl = TextEditingController(text: tenant.sapWebhookUrl ?? '');
+    _sapWebhookSecretCtrl = TextEditingController(text: tenant.sapWebhookSecret ?? '');
+    _sapCompanyDbCtrl = TextEditingController(text: tenant.sapCompanyDb ?? '');
+    _sapCostCenterCtrl = TextEditingController(text: tenant.sapCostCenter ?? '');
     _initialized = true;
   }
 
@@ -80,6 +96,10 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
     _webhookSecretCtrl = TextEditingController();
     _datevConsultantCtrl = TextEditingController();
     _datevClientCtrl = TextEditingController();
+    _sapWebhookUrlCtrl = TextEditingController();
+    _sapWebhookSecretCtrl = TextEditingController();
+    _sapCompanyDbCtrl = TextEditingController();
+    _sapCostCenterCtrl = TextEditingController();
     _initialized = true;
   }
 
@@ -108,6 +128,10 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
       erpWebhookSecret: opt(_webhookSecretCtrl),
       datevConsultantNumber: opt(_datevConsultantCtrl),
       datevClientNumber: opt(_datevClientCtrl),
+      sapWebhookUrl: opt(_sapWebhookUrlCtrl),
+      sapWebhookSecret: opt(_sapWebhookSecretCtrl),
+      sapCompanyDb: opt(_sapCompanyDbCtrl),
+      sapCostCenter: opt(_sapCostCenterCtrl),
     );
 
     try {
@@ -154,10 +178,21 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // ── Logo upload ───────────────────────────────────
+                  _sectionTitle('Logo'),
+                  const SizedBox(height: 12),
+                  _LogoUpload(
+                    tenantId: tenantId,
+                    currentLogoUrl: tenant?.logoUrl,
+                  ),
+
+                  const SizedBox(height: 28),
+
                   // ── Branding preview ─────────────────────────────
                   _BrandingPreview(
                     name: _nameCtrl.text,
                     colorHex: _colorCtrl.text,
+                    logoUrl: tenant?.logoUrl,
                   ),
 
                   const SizedBox(height: 24),
@@ -365,6 +400,87 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
                     ],
                   ),
 
+                  const SizedBox(height: 28),
+                  _sectionTitle('SAP-Integration'),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Webhook für SAP Business One, SAP S/4HANA oder eine SAP-Middleware.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 12),
+
+                  TextFormField(
+                    controller: _sapWebhookUrlCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'SAP Webhook-URL',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.webhook_outlined),
+                      hintText: 'https://sap.example.com/api/invoices',
+                    ),
+                    keyboardType: TextInputType.url,
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return null;
+                      if (!v.trim().startsWith('https://')) {
+                        return 'Muss mit https:// beginnen';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 14),
+
+                  TextFormField(
+                    controller: _sapWebhookSecretCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'SAP API-Key / Bearer Token',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.key_outlined),
+                      hintText: 'Wird als Authorization-Header gesendet',
+                    ),
+                    obscureText: true,
+                  ),
+                  const SizedBox(height: 14),
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _sapCompanyDbCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Company Database (B1)',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.storage_outlined),
+                            hintText: 'z.B. SBODemoDE',
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _sapCostCenterCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Kostenstelle',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.account_tree_outlined),
+                            hintText: 'z.B. 4100',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 28),
+                  _sectionTitle('IoT / Smart Home'),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Webhook-URL und API-Key für Sensor-Daten von HomeAssistant, MQTT-Bridge oder eigenen Geräten.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 12),
+                  _IotWebhookSection(
+                    tenantId: tenantId,
+                    currentKey: tenant?.iotWebhookKey,
+                  ),
+
                   const SizedBox(height: 32),
 
                   SizedBox(
@@ -396,15 +512,49 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
 // ─── Live Branding-Vorschau ────────────────────────────────────────────────────
 
 class _BrandingPreview extends StatelessWidget {
-  const _BrandingPreview({required this.name, required this.colorHex});
+  const _BrandingPreview({
+    required this.name,
+    required this.colorHex,
+    this.logoUrl,
+  });
   final String name;
   final String colorHex;
+  final String? logoUrl;
 
   @override
   Widget build(BuildContext context) {
     final color = colorHex.length == 6
         ? Color(int.tryParse('FF$colorHex', radix: 16) ?? 0xFF6366F1)
         : const Color(0xFF6366F1);
+
+    Widget logoWidget;
+    if (logoUrl != null && logoUrl!.isNotEmpty) {
+      logoWidget = CircleAvatar(
+        backgroundColor: Colors.white.withValues(alpha: 0.25),
+        child: ClipOval(
+          child: CachedNetworkImage(
+            imageUrl: logoUrl!,
+            width: 40,
+            height: 40,
+            fit: BoxFit.cover,
+            errorWidget: (_, __, ___) => Text(
+              name.isNotEmpty ? name[0].toUpperCase() : '?',
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ),
+      );
+    } else {
+      logoWidget = CircleAvatar(
+        backgroundColor: Colors.white.withValues(alpha: 0.25),
+        child: Text(
+          name.isNotEmpty ? name[0].toUpperCase() : '?',
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -414,14 +564,7 @@ class _BrandingPreview extends StatelessWidget {
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            backgroundColor: Colors.white.withValues(alpha: 0.25),
-            child: Text(
-              name.isNotEmpty ? name[0].toUpperCase() : '?',
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold),
-            ),
-          ),
+          logoWidget,
           const SizedBox(width: 12),
           Expanded(
             child: Text(
@@ -437,6 +580,326 @@ class _BrandingPreview extends StatelessWidget {
           const Text('Vorschau',
               style: TextStyle(color: Colors.white70, fontSize: 11)),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Logo-Upload ───────────────────────────────────────────────────────────────
+
+class _LogoUpload extends ConsumerStatefulWidget {
+  const _LogoUpload({required this.tenantId, this.currentLogoUrl});
+  final String tenantId;
+  final String? currentLogoUrl;
+
+  @override
+  ConsumerState<_LogoUpload> createState() => _LogoUploadState();
+}
+
+class _LogoUploadState extends ConsumerState<_LogoUpload> {
+  bool _uploading = false;
+  double? _progress;
+
+  Future<void> _pick() async {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 512,
+      maxHeight: 512,
+    );
+    if (file == null) return;
+
+    setState(() {
+      _uploading = true;
+      _progress = null;
+    });
+
+    try {
+      final bytes = await file.readAsBytes();
+      final ext = file.name.split('.').last.toLowerCase();
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('logos/${widget.tenantId}/logo.$ext');
+
+      final task = ref.putData(
+        bytes,
+        SettableMetadata(contentType: 'image/$ext'),
+      );
+
+      task.snapshotEvents.listen((snap) {
+        if (mounted) {
+          setState(() =>
+              _progress = snap.bytesTransferred / snap.totalBytes);
+        }
+      });
+
+      await task;
+      final url = await ref.getDownloadURL();
+      await _saveUrl(url);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Logo gespeichert')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _delete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Logo löschen?'),
+        content: const Text('Das Logo wird unwiderruflich entfernt.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Abbrechen')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Löschen',
+                  style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _uploading = true);
+    try {
+      // Delete from Storage (best effort)
+      try {
+        await FirebaseStorage.instance
+            .ref()
+            .child('logos/${widget.tenantId}')
+            .listAll()
+            .then((res) => Future.wait(res.items.map((i) => i.delete())));
+      } catch (_) {}
+
+      await _saveUrl(null);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Logo entfernt')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _saveUrl(String? url) async {
+    await ref
+        .read(tenantRepositoryProvider)
+        .updateLogoUrl(widget.tenantId, url);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasLogo =
+        widget.currentLogoUrl != null && widget.currentLogoUrl!.isNotEmpty;
+
+    return Row(
+      children: [
+        // Preview
+        Container(
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: _uploading
+              ? Center(
+                  child: _progress != null
+                      ? CircularProgressIndicator(value: _progress)
+                      : const CircularProgressIndicator(),
+                )
+              : hasLogo
+                  ? CachedNetworkImage(
+                      imageUrl: widget.currentLogoUrl!,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) =>
+                          const Center(child: CircularProgressIndicator()),
+                      errorWidget: (_, __, ___) => const Icon(
+                          Icons.broken_image_outlined,
+                          color: Colors.grey),
+                    )
+                  : const Icon(Icons.business_outlined,
+                      size: 32, color: Colors.grey),
+        ),
+
+        const SizedBox(width: 16),
+
+        // Buttons
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FilledButton.icon(
+                icon: const Icon(Icons.upload_outlined, size: 18),
+                label: Text(hasLogo ? 'Logo ersetzen' : 'Logo hochladen'),
+                onPressed: _uploading ? null : _pick,
+              ),
+              if (hasLogo) ...[
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  icon: const Icon(Icons.delete_outline,
+                      size: 18, color: Colors.red),
+                  label: const Text('Logo entfernen',
+                      style: TextStyle(color: Colors.red)),
+                  onPressed: _uploading ? null : _delete,
+                ),
+              ],
+              const SizedBox(height: 4),
+              const Text(
+                'PNG oder JPG, max. 512×512 px',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── IoT Webhook Section ──────────────────────────────────────────────────────
+
+class _IotWebhookSection extends ConsumerStatefulWidget {
+  const _IotWebhookSection({
+    required this.tenantId,
+    required this.currentKey,
+  });
+  final String tenantId;
+  final String? currentKey;
+
+  @override
+  ConsumerState<_IotWebhookSection> createState() => _IotWebhookSectionState();
+}
+
+class _IotWebhookSectionState extends ConsumerState<_IotWebhookSection> {
+  bool _generating = false;
+
+  static const _baseUrl =
+      'https://europe-west3-YOUR_PROJECT.cloudfunctions.net/receiveIotData';
+
+  Future<void> _generate() async {
+    setState(() => _generating = true);
+    try {
+      await ref
+          .read(tenantRepositoryProvider)
+          .generateIotKey(widget.tenantId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Neuer API-Key generiert')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _generating = false);
+    }
+  }
+
+  void _copy(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('In Zwischenablage kopiert')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasKey = widget.currentKey != null && widget.currentKey!.isNotEmpty;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Webhook-URL
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    _baseUrl,
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: Colors.grey),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy_outlined, size: 18),
+                  tooltip: 'URL kopieren',
+                  onPressed: () => _copy(_baseUrl),
+                ),
+              ],
+            ),
+            const Divider(height: 16),
+
+            // API-Key
+            if (hasKey) ...[
+              Row(
+                children: [
+                  const Icon(Icons.key_outlined, size: 16, color: Colors.green),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      widget.currentKey!,
+                      style: const TextStyle(
+                          fontSize: 12, fontFamily: 'monospace'),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.copy_outlined, size: 18),
+                    tooltip: 'Key kopieren',
+                    onPressed: () => _copy(widget.currentKey!),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Header: X-Api-Key: <key>',
+                style: TextStyle(fontSize: 11, color: Colors.grey),
+              ),
+            ] else
+              const Text(
+                'Noch kein API-Key generiert.',
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+
+            const SizedBox(height: 10),
+            _generating
+                ? const Center(child: CircularProgressIndicator())
+                : OutlinedButton.icon(
+                    icon: const Icon(Icons.refresh_outlined, size: 16),
+                    label: Text(hasKey
+                        ? 'Key neu generieren'
+                        : 'API-Key generieren'),
+                    onPressed: _generate,
+                  ),
+          ],
+        ),
       ),
     );
   }

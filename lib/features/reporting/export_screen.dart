@@ -22,14 +22,15 @@ class ExportScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Export'),
           bottom: const TabBar(
             tabs: [
               Tab(icon: Icon(Icons.confirmation_number_outlined), text: 'Tickets'),
-              Tab(icon: Icon(Icons.receipt_long_outlined), text: 'Rechnungen'),
+              Tab(icon: Icon(Icons.receipt_long_outlined), text: 'DATEV'),
+              Tab(icon: Icon(Icons.corporate_fare_outlined), text: 'SAP'),
             ],
           ),
         ),
@@ -37,6 +38,7 @@ class ExportScreen extends ConsumerWidget {
           children: [
             _TicketExportTab(),
             _InvoiceExportTab(),
+            _SapExportTab(),
           ],
         ),
       ),
@@ -620,6 +622,371 @@ class _InvoiceList extends ConsumerWidget {
                           exportable.isEmpty
                               ? 'DATEV-CSV exportieren'
                               : 'DATEV-CSV (${exportable.length}) exportieren',
+                        ),
+                        onPressed: exportable.isEmpty
+                            ? null
+                            : () => onExport(exportable),
+                      ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 3 — SAP
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _SapExportTab extends ConsumerStatefulWidget {
+  const _SapExportTab();
+
+  @override
+  ConsumerState<_SapExportTab> createState() => _SapExportTabState();
+}
+
+class _SapExportTabState extends ConsumerState<_SapExportTab> {
+  DateTime? _from;
+  DateTime? _to;
+  bool _exporting = false;
+
+  static final _dateFmt = DateFormat('dd.MM.yyyy');
+  static final _sapDate = DateFormat('yyyyMMdd');
+  static final _currency = NumberFormat.currency(locale: 'de_DE', symbol: '€');
+
+  // ── SAP FI Journal-Entry CSV ───────────────────────────────────────────────
+  //
+  // Kompatibel mit SAP Data Transfer Workbench (DTW) und gängigen
+  // SAP-Middleware-Importen (SAP B1 Service Layer, S/4HANA OData-Vorstufe).
+  //
+  // Spalten (Semikolon-getrennt):
+  //   Buchungskreis | Belegdatum | Buchungsdatum | Währung | Referenz |
+  //   Belegkopftext | Buchungsschlüssel | Konto | Betrag | Steuerkennzeichen |
+  //   Kostenstelle | Positionstext
+  static String _buildSapCsv(
+    List<Invoice> invoices, {
+    Tenant? tenant,
+    DateTime? from,
+    DateTime? to,
+  }) {
+    final now = DateTime.now();
+    final companyDb = tenant?.sapCompanyDb ?? '';
+    final costCenter = tenant?.sapCostCenter ?? '';
+
+    const conv = ListToCsvConverter(
+      fieldDelimiter: ';',
+      textDelimiter: '"',
+      eol: '\r\n',
+    );
+
+    final header = [
+      'Buchungskreis',
+      'Belegdatum',
+      'Buchungsdatum',
+      'Währung',
+      'Referenz',
+      'Belegkopftext',
+      'Buchungsschlüssel',
+      'Konto',
+      'Betrag',
+      'Steuerkennzeichen',
+      'Kostenstelle',
+      'Positionstext',
+      'CompanyDB',
+    ];
+
+    final rows = invoices.map((inv) {
+      final belegdatum = inv.createdAt != null
+          ? _sapDate.format(inv.createdAt!)
+          : _sapDate.format(now);
+      final buchungsdatum = _sapDate.format(now);
+      final ref = inv.id.length > 16 ? inv.id.substring(0, 16) : inv.id;
+      final text =
+          '${inv.contractorName} – ${inv.ticketTitle}'.length > 50
+              ? '${inv.contractorName} – ${inv.ticketTitle}'.substring(0, 50)
+              : '${inv.contractorName} – ${inv.ticketTitle}';
+
+      return [
+        companyDb,           // Buchungskreis / CompanyDB
+        belegdatum,          // Belegdatum
+        buchungsdatum,       // Buchungsdatum
+        'EUR',               // Währung
+        ref,                 // Referenz (Rechnungs-ID)
+        text,                // Belegkopftext
+        '31',                // Buchungsschlüssel: 31 = Eingangsrechnung (Kreditor)
+        '6300',              // Konto: Instandhaltungsaufwand
+        inv.amount.toStringAsFixed(2).replaceAll('.', ','),
+        'V2',                // Steuerkennzeichen: V2 = 19% Vorsteuer (anpassbar)
+        costCenter,          // Kostenstelle
+        text,                // Positionstext
+        companyDb,
+      ];
+    }).toList();
+
+    return conv.convert([header, ...rows]);
+  }
+
+  Future<void> _pickDate({required bool isFrom}) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: isFrom ? (_from ?? DateTime(now.year, 1, 1)) : (_to ?? now),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(now.year + 1),
+    );
+    if (picked == null) return;
+    setState(() => isFrom ? _from = picked : _to = picked);
+  }
+
+  Future<void> _export(List<Invoice> invoices) async {
+    if (invoices.isEmpty) return;
+    setState(() => _exporting = true);
+    try {
+      final tenant = ref.read(tenantProvider).valueOrNull;
+      final csv = _buildSapCsv(invoices, tenant: tenant, from: _from, to: _to);
+      final bytes = Uint8List.fromList(csv.codeUnits);
+      await Printing.sharePdf(
+        bytes: bytes,
+        filename: 'sap_rechnungen_${DateTime.now().millisecondsSinceEpoch}.csv',
+      );
+      await ref
+          .read(invoiceRepositoryProvider)
+          .markExported(invoices.map((i) => i.id).toList());
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tenantId =
+        ref.watch(currentUserProvider).valueOrNull?.tenantId ?? '';
+    final tenant = ref.watch(tenantProvider).valueOrNull;
+    final hasSapConfig =
+        tenant?.sapWebhookUrl != null || tenant?.sapCompanyDb != null;
+
+    return Column(
+      children: [
+        // ── SAP-Konfigurationsbanner ───────────────────────────────────
+        if (!hasSapConfig)
+          Container(
+            width: double.infinity,
+            color: Colors.orange.shade50,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline,
+                    size: 16, color: Colors.orange.shade800),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'SAP noch nicht konfiguriert. Bitte Company-DB und '
+                    'Kostenstelle unter Einstellungen hinterlegen.',
+                    style: TextStyle(
+                        fontSize: 12, color: Colors.orange.shade900),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // ── Datumsfilter ──────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                  label: Text(
+                    _from != null ? _dateFmt.format(_from!) : 'Von',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  onPressed: () => _pickDate(isFrom: true),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Text('–'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.calendar_today_outlined, size: 16),
+                  label: Text(
+                    _to != null ? _dateFmt.format(_to!) : 'Bis',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  onPressed: () => _pickDate(isFrom: false),
+                ),
+              ),
+              if (_from != null || _to != null)
+                IconButton(
+                  icon: const Icon(Icons.clear, size: 18),
+                  onPressed: () => setState(() {
+                    _from = null;
+                    _to = null;
+                  }),
+                ),
+            ],
+          ),
+        ),
+
+        // ── Rechnungsliste ────────────────────────────────────────────
+        if (tenantId.isNotEmpty)
+          Expanded(
+            child: _SapInvoiceList(
+              tenantId: tenantId,
+              from: _from,
+              to: _to,
+              exporting: _exporting,
+              currency: _currency,
+              onExport: _export,
+            ),
+          )
+        else
+          const Expanded(child: Center(child: Text('Nicht angemeldet.'))),
+      ],
+    );
+  }
+}
+
+class _SapInvoiceList extends ConsumerWidget {
+  const _SapInvoiceList({
+    required this.tenantId,
+    required this.from,
+    required this.to,
+    required this.exporting,
+    required this.currency,
+    required this.onExport,
+  });
+
+  final String tenantId;
+  final DateTime? from;
+  final DateTime? to;
+  final bool exporting;
+  final NumberFormat currency;
+  final Future<void> Function(List<Invoice>) onExport;
+
+  static final _fmt = DateFormat('dd.MM.yy');
+
+  List<Invoice> _filter(List<Invoice> all) => all.where((inv) {
+        if (inv.createdAt == null) return true;
+        if (from != null && inv.createdAt!.isBefore(from!)) return false;
+        if (to != null &&
+            inv.createdAt!.isAfter(to!.add(const Duration(days: 1)))) {
+          return false;
+        }
+        return true;
+      }).toList();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final allAsync = ref.watch(
+      StreamProvider<List<Invoice>>((ref) =>
+          ref.read(invoiceRepositoryProvider).watchAll(tenantId)),
+    );
+
+    return allAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(child: Text('Fehler: $e')),
+      data: (all) {
+        final invoices = _filter(all);
+        final exportable = invoices
+            .where((i) =>
+                i.status == InvoiceStatus.approved ||
+                i.status == InvoiceStatus.exported)
+            .toList();
+        final total =
+            exportable.fold<double>(0, (s, i) => s + i.amount);
+
+        return Column(
+          children: [
+            // Zusammenfassung
+            Container(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Text('${invoices.length} Rechnungen',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w500, fontSize: 13)),
+                  const Spacer(),
+                  Text(
+                    'Gesamt: ${currency.format(total)}',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+
+            Expanded(
+              child: invoices.isEmpty
+                  ? const Center(
+                      child: Text('Keine Rechnungen im Zeitraum.',
+                          style: TextStyle(color: Colors.grey)))
+                  : ListView.builder(
+                      itemCount: invoices.length,
+                      itemBuilder: (_, i) {
+                        final inv = invoices[i];
+                        return ListTile(
+                          dense: true,
+                          leading: Icon(
+                            Icons.receipt_outlined,
+                            size: 18,
+                            color: inv.status == InvoiceStatus.approved ||
+                                    inv.status == InvoiceStatus.exported
+                                ? Colors.green
+                                : inv.status == InvoiceStatus.rejected
+                                    ? Colors.red
+                                    : Colors.orange,
+                          ),
+                          title: Text(inv.contractorName,
+                              style: const TextStyle(fontSize: 13)),
+                          subtitle: Text(inv.ticketTitle,
+                              style: const TextStyle(fontSize: 11),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                          trailing: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                inv.amount > 0
+                                    ? currency.format(inv.amount)
+                                    : '–',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12),
+                              ),
+                              Text(
+                                inv.createdAt != null
+                                    ? _fmt.format(inv.createdAt!)
+                                    : '–',
+                                style: const TextStyle(
+                                    fontSize: 10, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+            ),
+
+            // Export-Button
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: exporting
+                    ? const Center(child: CircularProgressIndicator())
+                    : FilledButton.icon(
+                        icon: const Icon(Icons.download_outlined),
+                        label: Text(
+                          exportable.isEmpty
+                              ? 'SAP-CSV exportieren'
+                              : 'SAP-CSV (${exportable.length}) exportieren',
                         ),
                         onPressed: exportable.isEmpty
                             ? null

@@ -14,8 +14,10 @@ import '../../models/building.dart';
 import '../../models/device.dart';
 import '../../models/ticket.dart';
 import '../../models/unit.dart';
+import '../../models/sensor_reading.dart';
 import '../../repositories/building_repository.dart';
 import '../../repositories/device_repository.dart';
+import '../../repositories/sensor_reading_repository.dart';
 import '../../repositories/ticket_repository.dart';
 import '../../router.dart';
 import '../../user_provider.dart';
@@ -182,6 +184,11 @@ class _UnitDetailBody extends ConsumerWidget {
 
         // ── Maintenance alerts ────────────────────────────────────────
         _MaintenanceAlertsCard(devices: devicesAsync.valueOrNull ?? []),
+
+        const SizedBox(height: 20),
+
+        // ── Sensor-Readings (Live-Daten) ──────────────────────────────
+        _SensorReadingsSection(unitId: unit.id),
 
         const SizedBox(height: 20),
 
@@ -1014,6 +1021,114 @@ class _InfoRow extends StatelessWidget {
             style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Sensor-Readings ──────────────────────────────────────────────────────────
+
+final _sensorReadingsProvider =
+    StreamProvider.family<List<SensorReading>, String>((ref, unitId) {
+  return ref
+      .read(sensorReadingRepositoryProvider)
+      .watchLatestByUnit(unitId);
+});
+
+class _SensorReadingsSection extends ConsumerWidget {
+  const _SensorReadingsSection({required this.unitId});
+  final String unitId;
+
+  static final _timeFmt = DateFormat('dd.MM. HH:mm');
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final readingsAsync = ref.watch(_sensorReadingsProvider(unitId));
+
+    return readingsAsync.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (readings) {
+        if (readings.isEmpty) return const SizedBox.shrink();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Live-Sensordaten',
+              style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5),
+            ),
+            const SizedBox(height: 10),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: readings.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: 8,
+                crossAxisSpacing: 8,
+                childAspectRatio: 2.4,
+              ),
+              itemBuilder: (_, i) =>
+                  _SensorCard(reading: readings[i], timeFmt: _timeFmt),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _SensorCard extends StatelessWidget {
+  const _SensorCard({required this.reading, required this.timeFmt});
+  final SensorReading reading;
+  final DateFormat timeFmt;
+
+  @override
+  Widget build(BuildContext context) {
+    final type = reading.sensorType;
+    final color = type.color;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: color.withValues(alpha: 0.12),
+              child: Icon(type.icon, size: 18, color: color),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    reading.displayLabel,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    '${reading.value % 1 == 0 ? reading.value.toInt() : reading.value.toStringAsFixed(1)} ${reading.unit}',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: color),
+                  ),
+                  Text(
+                    timeFmt.format(reading.timestamp),
+                    style: const TextStyle(fontSize: 10, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

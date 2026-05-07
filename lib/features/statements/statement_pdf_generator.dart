@@ -112,11 +112,11 @@ class StatementPdfGenerator {
           children: [
             pw.Text(
               orgName.isNotEmpty ? orgName : 'Hausverwaltung',
-              style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
             ),
             pw.Text(
               'Betriebskostenabrechnung ${stmt.year}',
-              style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
             ),
           ],
         ),
@@ -134,12 +134,12 @@ class StatementPdfGenerator {
             pw.Text(
               'Gemäß § 556 BGB ist diese Abrechnung rechtlich bindend.',
               style:
-                  pw.TextStyle(fontSize: 8, color: PdfColors.grey500),
+                  const pw.TextStyle(fontSize: 8, color: PdfColors.grey500),
             ),
             pw.Text(
               'Seite ${ctx.pageNumber} / ${ctx.pagesCount}',
               style:
-                  pw.TextStyle(fontSize: 8, color: PdfColors.grey500),
+                  const pw.TextStyle(fontSize: 8, color: PdfColors.grey500),
             ),
           ],
         ),
@@ -152,13 +152,13 @@ class StatementPdfGenerator {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('An:', style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
+                pw.Text('An:', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
                 pw.SizedBox(height: 2),
                 pw.Text(stmt.recipientName,
-                    style: pw.TextStyle(fontSize: 11)),
+                    style: const pw.TextStyle(fontSize: 11)),
                 if (stmt.unitName.isNotEmpty)
                   pw.Text(stmt.unitName,
-                      style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+                      style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
               ],
             ),
           ),
@@ -167,7 +167,7 @@ class StatementPdfGenerator {
             children: [
               pw.Text(
                 'Erstellt am ${_dateFmt.format(DateTime.now())}',
-                style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+                style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
               ),
             ],
           ),
@@ -184,7 +184,7 @@ class StatementPdfGenerator {
           pw.SizedBox(height: 4),
           pw.Text(
             'Abrechnungszeitraum: ${_dateFmt.format(stmt.periodStart)} – ${_dateFmt.format(stmt.periodEnd)}',
-            style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+            style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
           ),
         ],
       );
@@ -210,7 +210,7 @@ class StatementPdfGenerator {
       border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
       headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9),
       headerDecoration: const pw.BoxDecoration(color: PdfColors.grey200),
-      cellStyle: pw.TextStyle(fontSize: 9),
+      cellStyle: const pw.TextStyle(fontSize: 9),
       cellAlignments: {
         0: pw.Alignment.centerLeft,
         1: pw.Alignment.centerRight,
@@ -307,7 +307,7 @@ class StatementPdfGenerator {
                   'innerhalb von 30 Tagen auf Ihr Konto überwiesen.'}\n'
               '• Die Belege zu den Einzelpositionen sind als Anlage beigefügt. '
               'Sie haben das Recht, die Originalbelege einzusehen (§ 259 BGB).',
-              style: pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
             ),
           ],
         ),

@@ -30,6 +30,7 @@ dependencies:
   cached_network_image: ^3.4.0
   connectivity_plus: ^7.1.1
   cloud_functions: ^4.7.3
+  fl_chart: ^0.69.0
 
 flutter:
   uses-material-design: true

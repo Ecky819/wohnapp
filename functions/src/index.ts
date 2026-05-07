@@ -4,7 +4,7 @@ import {
   onDocumentCreated,
   onDocumentUpdated,
 } from "firebase-functions/v2/firestore";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { onCall, HttpsError, onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions";
@@ -499,11 +499,17 @@ export const onStatementCreated = onDocumentCreated(
   }
 );
 
-// ─── Trigger: invoice status changed → ERP-Webhook ───────────────────────────
+// ─── Trigger: invoice status changed → ERP + SAP Webhook ─────────────────────
 
 /**
- * When a manager approves or rejects an invoice, POST the event to the
- * tenant's ERP webhook so the accounting system can react immediately.
+ * Fires when a manager approves or rejects an invoice.
+ * Posts the event in parallel to:
+ *  1. ERP webhook (generic, configurable)
+ *  2. SAP webhook (SAP Business One / S4HANA middleware)
+ *
+ * SAP payload follows the SAP Business One Service Layer schema for
+ * vendor invoices (APInvoices) so it can be forwarded by a middleware
+ * without transformation.
  */
 export const onInvoiceStatusChanged = onDocumentUpdated(
   { document: "invoices/{invoiceId}", region: "europe-west3" },
@@ -516,37 +522,152 @@ export const onInvoiceStatusChanged = onDocumentUpdated(
     const newStatus = after.status as string;
     if (newStatus !== "approved" && newStatus !== "rejected") return;
 
+    const invoiceId = event.params.invoiceId;
     const tenantId = after.tenantId as string;
     const tenantSnap = await db.collection("tenants").doc(tenantId).get();
-    const erpWebhookUrl = tenantSnap.data()?.erpWebhookUrl as string | undefined;
-    const erpWebhookSecret = tenantSnap.data()?.erpWebhookSecret as string | undefined;
+    const tenantData = tenantSnap.data() ?? {};
 
-    if (!erpWebhookUrl) return;
+    const webhookPromises: Promise<void>[] = [];
 
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        "User-Agent": "Wohnapp/1.0",
-      };
-      if (erpWebhookSecret) headers["X-Webhook-Secret"] = erpWebhookSecret;
-
-      await fetch(erpWebhookUrl, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          event: `invoice.${newStatus}`,
-          invoiceId: event.params.invoiceId,
-          tenantId,
-          data: after,
-        }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      logger.info(`ERP webhook invoice.${newStatus} fired for ${event.params.invoiceId}`);
-    } catch (err) {
-      logger.error("onInvoiceStatusChanged: webhook failed", err);
+    // ── 1. ERP webhook ────────────────────────────────────────────────────
+    const erpUrl = tenantData.erpWebhookUrl as string | undefined;
+    if (erpUrl) {
+      webhookPromises.push(
+        _postWebhook({
+          url: erpUrl,
+          secret: tenantData.erpWebhookSecret as string | undefined,
+          secretHeader: "X-Webhook-Secret",
+          payload: {
+            event: `invoice.${newStatus}`,
+            invoiceId,
+            tenantId,
+            data: after,
+          },
+          label: "ERP",
+          invoiceId,
+        })
+      );
     }
+
+    // ── 2. SAP webhook ────────────────────────────────────────────────────
+    const sapUrl = tenantData.sapWebhookUrl as string | undefined;
+    if (sapUrl && newStatus === "approved") {
+      const positions = (after.positions as Array<Record<string, unknown>> | undefined) ?? [];
+      const sapPayload = _buildSapInvoicePayload({
+        invoiceId,
+        after,
+        tenantData,
+        positions,
+      });
+      webhookPromises.push(
+        _postWebhook({
+          url: sapUrl,
+          secret: tenantData.sapWebhookSecret as string | undefined,
+          secretHeader: "Authorization",
+          secretPrefix: "Bearer ",
+          payload: sapPayload,
+          label: "SAP",
+          invoiceId,
+        })
+      );
+    }
+
+    await Promise.all(webhookPromises);
   }
 );
+
+// ── SAP Business One / S4HANA payload builder ─────────────────────────────────
+
+function _buildSapInvoicePayload(params: {
+  invoiceId: string;
+  after: Record<string, unknown>;
+  tenantData: Record<string, unknown>;
+  positions: Array<Record<string, unknown>>;
+}): Record<string, unknown> {
+  const { invoiceId, after, tenantData, positions } = params;
+  const now = new Date();
+  const dateStr = now.toISOString().split("T")[0]; // YYYY-MM-DD
+
+  // SAP Business One Service Layer schema for AP Invoice
+  return {
+    // Metadata
+    DocType: "dDocument_Service",
+    DocDate: dateStr,
+    DocDueDate: dateStr,
+    Comments: `Wohnapp Rechnung ${invoiceId} – ${after.ticketTitle ?? ""}`,
+    NumAtCard: invoiceId.substring(0, 16),
+
+    // Supplier / Vendor
+    CardCode: after.contractorId ?? "",
+    CardName: after.contractorName ?? "",
+
+    // Cost center / Company
+    ProjectCode: tenantData.sapCostCenter ?? "",
+    BranchID: tenantData.sapCompanyDb ?? "",
+
+    // Currency
+    DocCurrency: "EUR",
+    DocTotal: after.amount ?? 0,
+
+    // Line items
+    DocumentLines: positions.length > 0
+      ? positions.map((p, i) => ({
+          LineNum: i,
+          ItemDescription: p.description ?? `Position ${i + 1}`,
+          Quantity: 1,
+          UnitPrice: p.amount ?? 0,
+          Currency: "EUR",
+          COGSCostingCode: tenantData.sapCostCenter ?? "",
+          AccountCode: "6300", // Instandhaltungsaufwand
+        }))
+      : [{
+          LineNum: 0,
+          ItemDescription: (after.ticketTitle as string | undefined) ?? "Handwerkerrechnung",
+          Quantity: 1,
+          UnitPrice: after.amount ?? 0,
+          Currency: "EUR",
+          COGSCostingCode: tenantData.sapCostCenter ?? "",
+          AccountCode: "6300",
+        }],
+
+    // Wohnapp-Referenz als User-Defined Fields
+    U_WohnappInvoiceId: invoiceId,
+    U_WohnappTenantId: after.tenantId ?? "",
+    U_WohnappTicketId: after.ticketId ?? "",
+  };
+}
+
+// ── Generischer Webhook-Versand ───────────────────────────────────────────────
+
+async function _postWebhook(params: {
+  url: string;
+  secret?: string;
+  secretHeader: string;
+  secretPrefix?: string;
+  payload: Record<string, unknown>;
+  label: string;
+  invoiceId: string;
+}): Promise<void> {
+  const { url, secret, secretHeader, secretPrefix = "", payload, label, invoiceId } = params;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "User-Agent": "Wohnapp/1.0",
+  };
+  if (secret) headers[secretHeader] = `${secretPrefix}${secret}`;
+
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(10_000),
+    });
+    logger.info(`${label} webhook fired for invoice ${invoiceId} → ${resp.status}`);
+  } catch (err) {
+    logger.error(`${label} webhook failed for invoice ${invoiceId}`, err);
+  }
+}
 
 // ─── Scheduled: tägl. Wartungsalert-Check (08:00 Europe/Berlin) ──────────────
 
@@ -676,6 +797,235 @@ export const checkMaintenanceAlerts = onSchedule(
     );
   }
 );
+
+// ─── HTTP: IoT Sensor Webhook ─────────────────────────────────────────────────
+
+/**
+ * Empfängt Sensor-Messwerte von beliebigen IoT-Systemen (HomeAssistant,
+ * MQTT-Bridge, eigene Geräte) per HTTP POST.
+ *
+ * Auth: Header `X-Api-Key` muss mit dem `iotWebhookKey` des Mandanten
+ * in Firestore übereinstimmen.
+ *
+ * Request-Body:
+ * {
+ *   tenantId: string,
+ *   readings: Array<{
+ *     sensorType: string,   // temperature|humidity|co2|water_leak|smoke|energy_kwh|custom
+ *     value: number,
+ *     unit: string,         // °C | % | ppm | kWh | ...
+ *     deviceId?: string,    // optional – Link zum Device-Dokument
+ *     unitId?: string,      // optional – Wohnungs-ID
+ *     label?: string        // optional – Anzeigename
+ *   }>,
+ *   source?: string,        // homeassistant | mqtt | custom
+ *   timestamp?: string      // ISO-8601, default: jetzt
+ * }
+ *
+ * Bei Schwellwert-Überschreitung wird automatisch ein Wartungs-Ticket angelegt
+ * (max. 1× pro Gerät und Sensor-Typ innerhalb von 24 Stunden).
+ */
+export const receiveIotData = onRequest(
+  { region: "europe-west3" },
+  async (req, res) => {
+    if (req.method !== "POST") {
+      res.status(405).send("Method Not Allowed");
+      return;
+    }
+
+    // ── API-Key-Prüfung ───────────────────────────────────────────────────
+    const apiKey = req.headers["x-api-key"] as string | undefined;
+    if (!apiKey) {
+      res.status(401).json({ error: "X-Api-Key header missing" });
+      return;
+    }
+
+    const body = req.body as {
+      tenantId?: string;
+      readings?: Array<{
+        sensorType: string;
+        value: number;
+        unit: string;
+        deviceId?: string;
+        unitId?: string;
+        label?: string;
+      }>;
+      source?: string;
+      timestamp?: string;
+    };
+
+    const { tenantId, readings, source, timestamp } = body;
+
+    if (!tenantId || !Array.isArray(readings) || readings.length === 0) {
+      res.status(400).json({ error: "tenantId and readings are required" });
+      return;
+    }
+
+    // Verify key against tenant document
+    const tenantSnap = await db.collection("tenants").doc(tenantId).get();
+    if (!tenantSnap.exists) {
+      res.status(404).json({ error: "Tenant not found" });
+      return;
+    }
+    const storedKey = tenantSnap.data()?.iotWebhookKey as string | undefined;
+    if (!storedKey || storedKey !== apiKey) {
+      res.status(403).json({ error: "Invalid API key" });
+      return;
+    }
+
+    // ── Messwerte speichern ───────────────────────────────────────────────
+    const ts = timestamp ? new Date(timestamp) : new Date();
+    const firestoreTs = admin.firestore.Timestamp.fromDate(ts);
+    const batch = db.batch();
+    const readingRefs: FirebaseFirestore.DocumentReference[] = [];
+
+    for (const r of readings) {
+      const ref = db.collection("sensor_readings").doc();
+      batch.set(ref, {
+        tenantId,
+        sensorType: r.sensorType,
+        value: r.value,
+        unit: r.unit,
+        ...(r.deviceId ? { deviceId: r.deviceId } : {}),
+        ...(r.unitId ? { unitId: r.unitId } : {}),
+        ...(r.label ? { label: r.label } : {}),
+        ...(source ? { source } : {}),
+        timestamp: firestoreTs,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      readingRefs.push(ref);
+    }
+
+    await batch.commit();
+
+    // ── Schwellwert-Prüfung ───────────────────────────────────────────────
+    const alertPromises: Promise<void>[] = [];
+
+    for (const r of readings) {
+      if (!r.deviceId) continue;
+
+      // Load device from the correct subcollection path
+      // Devices are stored under units/{unitId}/devices/{deviceId}
+      // We do a collectionGroup query to find by ID across all units
+      const deviceSnap = await db
+        .collectionGroup("devices")
+        .where("tenantId", "==", tenantId)
+        .get()
+        .then((s) => s.docs.find((d) => d.id === r.deviceId));
+
+      if (!deviceSnap) continue;
+
+      const deviceData = deviceSnap.data();
+      const thresholds = deviceData.sensorThresholds as
+        | Record<string, { min?: number; max?: number }>
+        | undefined;
+
+      if (!thresholds?.[r.sensorType]) continue;
+
+      const { min, max } = thresholds[r.sensorType];
+      const breached =
+        (min !== undefined && r.value < min) ||
+        (max !== undefined && r.value > max);
+
+      if (!breached) continue;
+
+      // Throttle: max one alert per device per sensor per 24h
+      const lastAlerts = deviceData.lastSensorAlert as
+        | Record<string, admin.firestore.Timestamp>
+        | undefined;
+      const lastAlert = lastAlerts?.[r.sensorType];
+      const oneDayMs = 24 * 60 * 60 * 1000;
+      if (lastAlert && Date.now() - lastAlert.toMillis() < oneDayMs) continue;
+
+      alertPromises.push(
+        _createThresholdTicket({
+          tenantId,
+          deviceId: r.deviceId,
+          deviceName: deviceData.name as string ?? "Gerät",
+          unitId: r.unitId ?? (deviceData.unitId as string | undefined),
+          unitName: deviceData.unitName as string | undefined,
+          sensorType: r.sensorType,
+          value: r.value,
+          unit: r.unit,
+          min,
+          max,
+          deviceRef: deviceSnap.ref,
+        })
+      );
+    }
+
+    await Promise.all(alertPromises);
+
+    logger.info(
+      `receiveIotData: ${readings.length} readings written for tenant ${tenantId}`
+    );
+    res.status(200).json({ ok: true, written: readings.length });
+  }
+);
+
+async function _createThresholdTicket(params: {
+  tenantId: string;
+  deviceId: string;
+  deviceName: string;
+  unitId?: string;
+  unitName?: string;
+  sensorType: string;
+  value: number;
+  unit: string;
+  min?: number;
+  max?: number;
+  deviceRef: FirebaseFirestore.DocumentReference;
+}): Promise<void> {
+  const {
+    tenantId, deviceId, deviceName, unitId, unitName,
+    sensorType, value, unit, min, max, deviceRef,
+  } = params;
+
+  const sensorLabels: Record<string, string> = {
+    temperature: "Temperatur",
+    humidity: "Luftfeuchtigkeit",
+    co2: "CO₂",
+    water_leak: "Wasserleck",
+    smoke: "Rauchmelder",
+    energy_kwh: "Energieverbrauch",
+  };
+  const label = sensorLabels[sensorType] ?? sensorType;
+
+  const direction =
+    min !== undefined && value < min ? "zu niedrig" : "zu hoch";
+  const limit = min !== undefined && value < min ? min : max;
+
+  const title = `${label}-Alarm: ${value} ${unit} (Grenzwert: ${limit} ${unit})`;
+  const description =
+    `Gerät: ${deviceName}\n` +
+    `Messwert ${direction}: ${value} ${unit}\n` +
+    (unitName ? `Wohnung: ${unitName}\n` : "") +
+    `Sensor-Typ: ${sensorType}`;
+
+  await db.collection("tickets").add({
+    title,
+    description,
+    status: "open",
+    priority: value !== undefined && sensorType === "water_leak" ? "high" : "normal",
+    category: "maintenance",
+    tenantId,
+    createdBy: "system_iot",
+    ...(unitId ? { unitId } : {}),
+    ...(unitName ? { unitName } : {}),
+    deviceId,
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    source: "iot_threshold",
+  });
+
+  // Update throttle timestamp
+  await deviceRef.update({
+    [`lastSensorAlert.${sensorType}`]: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  logger.info(
+    `Threshold ticket created for device ${deviceId} sensor ${sensorType}: ${value} ${unit}`
+  );
+}
 
 function _defaultIntervalMonths(category: string | undefined): number {
   switch (category) {

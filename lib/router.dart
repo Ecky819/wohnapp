@@ -24,6 +24,7 @@ import 'features/statements/create_statement_screen.dart';
 import 'features/statements/tenant_statements_screen.dart';
 import 'features/reporting/export_screen.dart';
 import 'features/tickets/create_ticket_screen.dart';
+import 'features/tickets/insurance_claim_screen.dart';
 import 'features/tickets/ticket_detail_screen.dart';
 import 'features/tickets/ticket_list_screen.dart';
 import 'login_screen.dart';
@@ -49,6 +50,7 @@ abstract class AppRoutes {
   static const contractor = '/contractor';
   static const profile = '/profile';
   static const ticketDetail = '/ticket/:id';
+  static const insuranceClaim = '/ticket/:id/insurance-claim';
   static const calendar = '/calendar';
   static const export = '/export';
   static const tenants = '/tenants';
@@ -208,6 +210,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.ticketDetail,
         builder: (_, state) => TicketDetailScreen(
+          ticketId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.insuranceClaim,
+        builder: (_, state) => InsuranceClaimScreen(
           ticketId: state.pathParameters['id']!,
         ),
       ),

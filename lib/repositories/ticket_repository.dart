@@ -7,6 +7,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/activity_entry.dart';
+import '../models/insurance_claim.dart';
 import '../models/ticket.dart';
 import '../services/notification_service.dart';
 import '../services/upload_retry_service.dart';
@@ -167,6 +168,7 @@ class TicketRepository {
     List<File> images = const [],
     List<PlatformFile> documents = const [],
     ActivityRepository? activityRepo,
+    InsuranceClaim? insuranceClaim,
     /// Override the creator UID — used for anonymous guest reports.
     String? guestUid,
   }) async {
@@ -185,6 +187,7 @@ class TicketRepository {
       if (unitId != null) 'unitId': unitId,
       if (unitName != null) 'unitName': unitName,
       if (scheduledAt != null) 'scheduledAt': Timestamp.fromDate(scheduledAt),
+      if (insuranceClaim != null) 'insuranceClaim': insuranceClaim.toMap(),
     });
 
     // Upload all images (merges legacy single `image` param with `images` list)
@@ -268,6 +271,23 @@ class TicketRepository {
         return 'Erledigt';
       default:
         return s;
+    }
+  }
+
+  Future<void> updateInsuranceClaim(
+    String ticketId,
+    InsuranceClaim claim, {
+    ActivityRepository? activityRepo,
+  }) async {
+    await _tickets
+        .doc(ticketId)
+        .update({'insuranceClaim': claim.toMap()});
+    if (activityRepo != null) {
+      await activityRepo.log(
+        ticketId: ticketId,
+        type: ActivityType.updated,
+        detail: 'Versicherungsfall: ${claim.status.label}',
+      );
     }
   }
 
