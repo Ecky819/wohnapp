@@ -26,7 +26,7 @@ class _EnergyScreenState extends ConsumerState<EnergyScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
 
-  static final _types = EnergyType.values;
+  static const _types = EnergyType.values;
 
   @override
   void initState() {
@@ -51,10 +51,7 @@ class _EnergyScreenState extends ConsumerState<EnergyScreen>
               .map((t) => Tab(icon: Icon(t.icon, size: 18), text: t.label))
               .toList(),
         ),
-        actions: [
-          _ImportButton(),
-          _ExportButton(),
-        ],
+        actions: [_ImportButton(), _ExportButton()],
       ),
       body: TabBarView(
         controller: _tabs,
@@ -94,17 +91,14 @@ class _EnergyTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tenantId =
-        ref.watch(currentUserProvider).valueOrNull?.tenantId ?? '';
-    final readingsAsync =
-        ref.watch(energyReadingsByTenantProvider(tenantId));
+    final tenantId = ref.watch(currentUserProvider).valueOrNull?.tenantId ?? '';
+    final readingsAsync = ref.watch(energyReadingsByTenantProvider(tenantId));
 
     return readingsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => ErrorState(message: e.toString()),
       data: (all) {
-        final readings =
-            all.where((r) => r.type == type).toList();
+        final readings = all.where((r) => r.type == type).toList();
 
         if (readings.isEmpty) {
           return EmptyState(
@@ -189,7 +183,9 @@ class _SummaryRow extends StatelessWidget {
                       ? '${numFmt.format(totalConsumption)} ${type.unit} gesamt'
                       : 'Noch keine Verbrauchsberechnung',
                   style: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 14),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
                 ),
               ],
             ),
@@ -231,8 +227,10 @@ class _UnitReadingCard extends ConsumerWidget {
           backgroundColor: type.color.withValues(alpha: 0.12),
           child: Icon(type.icon, color: type.color, size: 18),
         ),
-        title: Text(unitName,
-            style: const TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(
+          unitName,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
         subtitle: Text(
           '${numFmt.format(latest.value)} ${type.unit} · ${dateFmt.format(latest.readingDate)}',
           style: const TextStyle(fontSize: 12),
@@ -243,22 +241,23 @@ class _UnitReadingCard extends ConsumerWidget {
                   '∆ ${numFmt.format(consumption)} ${type.unit}',
                   style: const TextStyle(fontSize: 11),
                 ),
-                backgroundColor:
-                    type.color.withValues(alpha: 0.12),
+                backgroundColor: type.color.withValues(alpha: 0.12),
                 padding: EdgeInsets.zero,
                 visualDensity: VisualDensity.compact,
               )
             : null,
         children: readings
-            .map((r) => _ReadingTile(
-                  reading: r,
-                  dateFmt: dateFmt,
-                  numFmt: numFmt,
-                  type: type,
-                  onDelete: () => ref
-                      .read(energyReadingRepositoryProvider)
-                      .deleteReading(r.id),
-                ))
+            .map(
+              (r) => _ReadingTile(
+                reading: r,
+                dateFmt: dateFmt,
+                numFmt: numFmt,
+                type: type,
+                onDelete: () => ref
+                    .read(energyReadingRepositoryProvider)
+                    .deleteReading(r.id),
+              ),
+            )
             .toList(),
       ),
     );
@@ -295,8 +294,7 @@ class _ReadingTile extends StatelessWidget {
       subtitle: reading.meterNumber != null || reading.note != null
           ? Text(
               [
-                if (reading.meterNumber != null)
-                  'Nr. ${reading.meterNumber}',
+                if (reading.meterNumber != null) 'Nr. ${reading.meterNumber}',
                 if (reading.note != null) reading.note!,
               ].join(' · '),
               style: const TextStyle(fontSize: 11),
@@ -311,12 +309,16 @@ class _ReadingTile extends StatelessWidget {
               title: const Text('Ablesung löschen?'),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Abbrechen')),
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Abbrechen'),
+                ),
                 TextButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Löschen',
-                        style: TextStyle(color: Colors.red))),
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text(
+                    'Löschen',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
               ],
             ),
           );
@@ -379,7 +381,9 @@ class _AddReadingSheetState extends ConsumerState<_AddReadingSheet> {
       final valueStr = _valueCtrl.text.trim().replaceAll(',', '.');
       final value = double.tryParse(valueStr) ?? 0;
 
-      await ref.read(energyReadingRepositoryProvider).addReading(
+      await ref
+          .read(energyReadingRepositoryProvider)
+          .addReading(
             EnergyReading(
               id: '',
               tenantId: tenantId,
@@ -401,8 +405,7 @@ class _AddReadingSheetState extends ConsumerState<_AddReadingSheet> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -428,31 +431,34 @@ class _AddReadingSheetState extends ConsumerState<_AddReadingSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Ablesung hinzufügen',
-                  style:
-                      TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+              const Text(
+                'Ablesung hinzufügen',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              ),
               const SizedBox(height: 16),
 
               // Zählertyp
               SegmentedButton<EnergyType>(
                 segments: EnergyType.values
-                    .map((t) => ButtonSegment(
-                          value: t,
-                          icon: Icon(t.icon, size: 16),
-                          label: Text(t.label,
-                              style: const TextStyle(fontSize: 12)),
-                        ))
+                    .map(
+                      (t) => ButtonSegment(
+                        value: t,
+                        icon: Icon(t.icon, size: 16),
+                        label: Text(
+                          t.label,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    )
                     .toList(),
                 selected: {_type},
-                onSelectionChanged: (s) =>
-                    setState(() => _type = s.first),
+                onSelectionChanged: (s) => setState(() => _type = s.first),
               ),
               const SizedBox(height: 16),
 
               // Wohnung
               buildingsAsync.when(
-                loading: () =>
-                    const Center(child: CircularProgressIndicator()),
+                loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Text('Fehler: $e'),
                 data: (buildings) {
                   final units = <(String id, String name)>[];
@@ -464,18 +470,22 @@ class _AddReadingSheetState extends ConsumerState<_AddReadingSheet> {
                     }
                   }
                   return DropdownButtonFormField<String>(
-                    value: _selectedUnitId,
+                    initialValue: _selectedUnitId,
                     decoration: const InputDecoration(
                       labelText: 'Wohnung *',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.apartment_outlined),
                     ),
                     items: units
-                        .map((u) => DropdownMenuItem(
-                              value: u.$1,
-                              child: Text(u.$2,
-                                  style: const TextStyle(fontSize: 13)),
-                            ))
+                        .map(
+                          (u) => DropdownMenuItem(
+                            value: u.$1,
+                            child: Text(
+                              u.$2,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        )
                         .toList(),
                     onChanged: (v) {
                       final match = units.firstWhere((u) => u.$1 == v);
@@ -484,8 +494,7 @@ class _AddReadingSheetState extends ConsumerState<_AddReadingSheet> {
                         _selectedUnitName = match.$2;
                       });
                     },
-                    validator: (v) =>
-                        v == null ? 'Pflichtfeld' : null,
+                    validator: (v) => v == null ? 'Pflichtfeld' : null,
                   );
                 },
               ),
@@ -504,13 +513,13 @@ class _AddReadingSheetState extends ConsumerState<_AddReadingSheet> {
                         prefixIcon: const Icon(Icons.speed_outlined),
                       ),
                       keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true),
+                        decimal: true,
+                      ),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) {
                           return 'Pflichtfeld';
                         }
-                        if (double.tryParse(
-                                v.trim().replaceAll(',', '.')) ==
+                        if (double.tryParse(v.trim().replaceAll(',', '.')) ==
                             null) {
                           return 'Ungültige Zahl';
                         }
@@ -536,8 +545,7 @@ class _AddReadingSheetState extends ConsumerState<_AddReadingSheet> {
                         decoration: const InputDecoration(
                           labelText: 'Datum',
                           border: OutlineInputBorder(),
-                          suffixIcon:
-                              Icon(Icons.calendar_today_outlined),
+                          suffixIcon: Icon(Icons.calendar_today_outlined),
                         ),
                         child: Text(
                           _dateFmt.format(_date),
@@ -636,8 +644,7 @@ class _ImportButtonState extends ConsumerState<_ImportButton> {
         final typeStr = row[1].toString().trim();
         final unitId = row[2].toString().trim();
         final unitName = row[3].toString().trim();
-        final valueStr =
-            row[4].toString().trim().replaceAll(',', '.');
+        final valueStr = row[4].toString().trim().replaceAll(',', '.');
         final unit2 = row.length > 5 ? row[5].toString().trim() : '';
         final meterNo = row.length > 6 ? row[6].toString().trim() : '';
         final note = row.length > 7 ? row[7].toString().trim() : '';
@@ -653,38 +660,37 @@ class _ImportButtonState extends ConsumerState<_ImportButton> {
           continue;
         }
 
-        readings.add(EnergyReading(
-          id: '',
-          tenantId: tenantId,
-          unitId: unitId,
-          unitName: unitName,
-          type: EnergyTypeX.fromCsvLabel(typeStr),
-          value: value,
-          readingDate: date,
-          meterNumber: meterNo.isNotEmpty ? meterNo : null,
-          note: note.isNotEmpty ? note : null,
-        ));
+        readings.add(
+          EnergyReading(
+            id: '',
+            tenantId: tenantId,
+            unitId: unitId,
+            unitName: unitName,
+            type: EnergyTypeX.fromCsvLabel(typeStr),
+            value: value,
+            readingDate: date,
+            meterNumber: meterNo.isNotEmpty ? meterNo : null,
+            note: note.isNotEmpty ? note : null,
+          ),
+        );
       }
 
       if (readings.isEmpty) throw Exception('Keine gültigen Zeilen gefunden');
 
-      await ref
-          .read(energyReadingRepositoryProvider)
-          .addBatch(readings);
+      await ref.read(energyReadingRepositoryProvider).addBatch(readings);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content:
-                  Text('${readings.length} Ablesungen importiert')),
+          SnackBar(content: Text('${readings.length} Ablesungen importiert')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Import-Fehler: $e'),
-              backgroundColor: Colors.red),
+            content: Text('Import-Fehler: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -698,9 +704,10 @@ class _ImportButtonState extends ConsumerState<_ImportButton> {
         ? const Padding(
             padding: EdgeInsets.all(14),
             child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2)),
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
           )
         : IconButton(
             icon: const Icon(Icons.upload_outlined),
@@ -782,8 +789,9 @@ class _ExportButtonState extends ConsumerState<_ExportButton> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Export-Fehler: $e'),
-              backgroundColor: Colors.red),
+            content: Text('Export-Fehler: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -797,9 +805,10 @@ class _ExportButtonState extends ConsumerState<_ExportButton> {
         ? const Padding(
             padding: EdgeInsets.all(14),
             child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2)),
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
           )
         : IconButton(
             icon: const Icon(Icons.download_outlined),
