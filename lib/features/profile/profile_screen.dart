@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../models/app_user.dart';
+import '../../models/notification_preferences.dart';
 import '../../repositories/building_repository.dart';
+import '../../repositories/user_repository.dart';
 import '../../router.dart';
 import '../../services/routing_service.dart';
 import '../../user_provider.dart';
@@ -88,7 +90,14 @@ class _ProfileBody extends ConsumerWidget {
           _SpecializationsEditor(user: user),
         ],
 
-        const SizedBox(height: 40),
+        const SizedBox(height: 32),
+        const Divider(),
+        const SizedBox(height: 8),
+
+        // ── Benachrichtigungseinstellungen ────────────────────────────
+        _NotificationSettingsSection(user: user),
+
+        const SizedBox(height: 32),
 
         // ── Logout ───────────────────────────────────────────────────
         OutlinedButton.icon(
@@ -268,6 +277,143 @@ class _InfoRow extends StatelessWidget {
               style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
+    );
+  }
+}
+
+// ─── Benachrichtigungseinstellungen ──────────────────────────────────────────
+
+class _NotificationSettingsSection extends ConsumerStatefulWidget {
+  const _NotificationSettingsSection({required this.user});
+  final AppUser user;
+
+  @override
+  ConsumerState<_NotificationSettingsSection> createState() =>
+      _NotificationSettingsSectionState();
+}
+
+class _NotificationSettingsSectionState
+    extends ConsumerState<_NotificationSettingsSection> {
+  late NotificationPreferences _prefs;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _prefs = widget.user.notificationPreferences;
+  }
+
+  Future<void> _toggle(NotificationPreferences updated) async {
+    setState(() {
+      _prefs = updated;
+      _saving = true;
+    });
+    try {
+      await ref
+          .read(userRepositoryProvider)
+          .updateNotificationPreferences(widget.user.uid, updated);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final role = widget.user.role;
+
+    // Welche Toggles pro Rolle anzeigen
+    final items = <({String label, String subtitle, bool value, NotificationPreferences Function(bool) update})>[
+      if (role == 'manager' || role == 'tenant_user' || role == 'contractor')
+        (
+          label: 'Ticket-Status geändert',
+          subtitle: role == 'manager'
+              ? 'Statuswechsel auf allen Tickets'
+              : 'Mein Ticket hat sich geändert',
+          value: _prefs.ticketStatusChanged,
+          update: (v) => _prefs.copyWith(ticketStatusChanged: v),
+        ),
+      if (role == 'contractor')
+        (
+          label: 'Ticket zugewiesen',
+          subtitle: 'Neues Ticket für mich',
+          value: _prefs.ticketAssigned,
+          update: (v) => _prefs.copyWith(ticketAssigned: v),
+        ),
+      if (role == 'manager' || role == 'tenant_user' || role == 'contractor')
+        (
+          label: 'Neuer Kommentar',
+          subtitle: 'Kommentar auf einem meiner Tickets',
+          value: _prefs.newComment,
+          update: (v) => _prefs.copyWith(newComment: v),
+        ),
+      if (role == 'manager')
+        (
+          label: 'Neue Rechnung',
+          subtitle: 'Handwerker reicht Rechnung ein',
+          value: _prefs.invoiceSubmitted,
+          update: (v) => _prefs.copyWith(invoiceSubmitted: v),
+        ),
+      if (role == 'manager')
+        (
+          label: 'Wartungsalert',
+          subtitle: 'Gerät überfällig oder bald fällig',
+          value: _prefs.maintenanceAlert,
+          update: (v) => _prefs.copyWith(maintenanceAlert: v),
+        ),
+      if (role == 'tenant_user')
+        (
+          label: 'Neue Jahresabrechnung',
+          subtitle: 'Betriebskostenabrechnung verfügbar',
+          value: _prefs.statementCreated,
+          update: (v) => _prefs.copyWith(statementCreated: v),
+        ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.notifications_outlined, size: 18, color: Colors.grey),
+            const SizedBox(width: 8),
+            const Text(
+              'Benachrichtigungen',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+            if (_saving) ...[
+              const SizedBox(width: 10),
+              const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Wähle welche Push-Benachrichtigungen du erhalten möchtest.',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+        const SizedBox(height: 12),
+        ...items.map(
+          (item) => SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: Text(item.label,
+                style: const TextStyle(fontSize: 14)),
+            subtitle: Text(item.subtitle,
+                style: const TextStyle(fontSize: 12)),
+            value: item.value,
+            onChanged: _saving ? null : (v) => _toggle(item.update(v)),
+          ),
+        ),
+      ],
     );
   }
 }

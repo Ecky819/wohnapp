@@ -235,6 +235,8 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
                 context.push(AppRoutes.tenantSettings);
               case 'bulkImport':
                 context.push(AppRoutes.bulkImport);
+              case 'energy':
+                context.push(AppRoutes.energy);
               case 'profile':
                 context.push(AppRoutes.profile);
             }
@@ -318,6 +320,15 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
                 dense: true,
                 leading: Icon(Icons.upload_file_outlined),
                 title: Text('Bulk-Import'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            PopupMenuItem(
+              value: 'energy',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.bolt_outlined),
+                title: Text('Energieverbrauch'),
                 contentPadding: EdgeInsets.zero,
               ),
             ),

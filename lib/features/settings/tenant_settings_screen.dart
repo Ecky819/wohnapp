@@ -792,7 +792,7 @@ class _IotWebhookSectionState extends ConsumerState<_IotWebhookSection> {
   bool _generating = false;
 
   static const _baseUrl =
-      'https://europe-west3-YOUR_PROJECT.cloudfunctions.net/receiveIotData';
+      'https://europe-west3-wohnapp-mvp.cloudfunctions.net/receiveIotData';
 
   Future<void> _generate() async {
     setState(() => _generating = true);

@@ -315,6 +315,27 @@ service cloud.firestore {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // energy_readings/{readingId}
+    // Manuelle Zählerstand-Ablesungen (Strom, Gas, Wasser, Wärme).
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    match /energy_readings/{readingId} {
+      // Manager liest alle Ablesungen des Mandanten.
+      allow read: if isManager() && resource.data.tenantId == userTenantId();
+
+      // Manager legt Ablesungen an.
+      allow create: if isManager() &&
+        request.resource.data.tenantId == userTenantId() &&
+        request.resource.data.createdBy == request.auth.uid;
+
+      // Keine Updates — Ablesungen sind unveränderlich.
+      allow update: if false;
+
+      // Manager darf fehlerhafte Ablesungen löschen.
+      allow delete: if isManager() && resource.data.tenantId == userTenantId();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // sensor_readings/{readingId}
     // IoT-Sensor-Messwerte — werden ausschließlich via Cloud Function
     // (Admin SDK) geschrieben. Flutter liest nur.

@@ -233,10 +233,17 @@ export const onTicketStatusChanged = onDocumentUpdated(
 
     try {
       const userDoc = await db.collection("users").doc(createdBy).get();
-      const fcmToken = userDoc.data()?.fcmToken as string | undefined;
+      const userData = userDoc.data();
+      const fcmToken = userData?.fcmToken as string | undefined;
 
       if (!fcmToken) {
         logger.warn(`No FCM token for ticket creator ${createdBy}`);
+        return;
+      }
+
+      // Präferenz-Check: ticketStatusChanged
+      if (!_getPref(userData, "ticketStatusChanged")) {
+        logger.info(`ticketStatusChanged suppressed for ${createdBy} (disabled in prefs)`);
         return;
       }
 
@@ -769,8 +776,15 @@ export const checkMaintenanceAlerts = onSchedule(
       const { title, body } = _buildAlertMessage(alerts);
 
       for (const managerDoc of managersSnap.docs) {
-        const fcmToken = managerDoc.data().fcmToken as string | undefined;
+        const managerData = managerDoc.data();
+        const fcmToken = managerData.fcmToken as string | undefined;
         if (!fcmToken) continue;
+
+        // Präferenz-Check: maintenanceAlert
+        if (!_getPref(managerData, "maintenanceAlert")) {
+          logger.info(`maintenanceAlert suppressed for ${managerDoc.id} (disabled in prefs)`);
+          continue;
+        }
 
         try {
           await sendPush(
@@ -1025,6 +1039,24 @@ async function _createThresholdTicket(params: {
   logger.info(
     `Threshold ticket created for device ${deviceId} sensor ${sensorType}: ${value} ${unit}`
   );
+}
+
+// ─── Hilfsfunktion: Benachrichtigungspräferenz lesen ─────────────────────────
+
+/**
+ * Liest eine einzelne Präferenz aus dem `notificationPreferences`-Map eines
+ * User-Dokuments. Default: true (opt-out statt opt-in).
+ */
+function _getPref(
+  userData: Record<string, unknown> | undefined,
+  key: string
+): boolean {
+  if (!userData) return true;
+  const prefs = userData.notificationPreferences as
+    | Record<string, boolean>
+    | undefined;
+  if (!prefs) return true;
+  return prefs[key] !== false;
 }
 
 function _defaultIntervalMonths(category: string | undefined): number {

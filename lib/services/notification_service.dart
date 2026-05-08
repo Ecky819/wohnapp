@@ -169,6 +169,8 @@ class NotificationService {
     required String newStatus,
     required String createdBy,
   }) async {
+    if (!await _prefEnabled(createdBy, (p) => p.ticketStatusChanged)) return;
+
     await FirebaseFirestore.instance.collection('notifications').add({
       'type': 'ticket_status_changed',
       'ticketId': ticketId,
@@ -186,6 +188,7 @@ class NotificationService {
   }) async {
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
     if (contractorId == currentUid) return;
+    if (!await _prefEnabled(contractorId, (p) => p.ticketAssigned)) return;
 
     await FirebaseFirestore.instance.collection('notifications').add({
       'type': 'ticket_assigned',
@@ -205,8 +208,15 @@ class NotificationService {
     String? assignedTo,
   }) async {
     final currentUid = FirebaseAuth.instance.currentUser?.uid;
-    final targets = <String>{createdBy, if (assignedTo != null) assignedTo}
+    final candidates = <String>{createdBy, if (assignedTo != null) assignedTo}
       ..remove(currentUid);
+
+    // Filter by each recipient's preference
+    final targets = <String>[];
+    for (final uid in candidates) {
+      if (await _prefEnabled(uid, (p) => p.newComment)) targets.add(uid);
+    }
+    if (targets.isEmpty) return;
 
     final batch = FirebaseFirestore.instance.batch();
     final col = FirebaseFirestore.instance.collection('notifications');
@@ -224,5 +234,22 @@ class NotificationService {
     }
 
     await batch.commit();
+  }
+
+  // ─── Präferenz-Hilfsfunktion ─────────────────────────────────────────────
+
+  /// Gibt true zurück wenn der User [uid] den Benachrichtigungs-Typ
+  /// [selector] aktiviert hat (Default: true wenn kein Eintrag vorhanden).
+  static Future<bool> _prefEnabled(
+    String uid,
+    bool Function(NotificationPreferences) selector,
+  ) async {
+    try {
+      final repo = UserRepository(FirebaseFirestore.instance);
+      final prefs = await repo.getPreferences(uid);
+      return selector(prefs);
+    } catch (_) {
+      return true; // Im Fehlerfall lieber senden als schweigen
+    }
   }
 }

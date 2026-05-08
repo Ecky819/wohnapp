@@ -22,6 +22,7 @@ import 'features/settings/tenant_settings_screen.dart';
 import 'features/statements/manager_statements_screen.dart';
 import 'features/statements/create_statement_screen.dart';
 import 'features/statements/tenant_statements_screen.dart';
+import 'features/energy/energy_screen.dart';
 import 'features/reporting/export_screen.dart';
 import 'features/tickets/create_ticket_screen.dart';
 import 'features/tickets/insurance_claim_screen.dart';
@@ -61,6 +62,7 @@ abstract class AppRoutes {
   static const statements = '/statements';
   static const createStatement = '/statements/create';
   static const tenantStatements = '/my-statements';
+  static const energy = '/energy';
 
   static String ticketDetailPath(String id) => '/ticket/$id';
   static String unitDetailPath(String id) => '/unit/$id';
@@ -260,6 +262,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.tenantStatements,
         builder: (_, __) => const TenantStatementsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.energy,
+        builder: (_, __) => const EnergyScreen(),
       ),
       GoRoute(
         path: AppRoutes.guestReport,

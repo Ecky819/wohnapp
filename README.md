@@ -57,7 +57,7 @@ Sensordaten von beliebigen IoT-Systemen (HomeAssistant, MQTT-Bridge, eigene Hard
 
 Die Webhook-URL hat folgendes Format:
 ```
-https://europe-west3-<PROJECT_ID>.cloudfunctions.net/receiveIotData
+https://europe-west3-wohnapp-mvp.cloudfunctions.net/receiveIotData
 ```
 
 Die `PROJECT_ID` steht in der Firebase Console unter **Projekteinstellungen**.
@@ -159,7 +159,7 @@ Wird ein Grenzwert überschritten, legt das System automatisch ein Wartungs-Tick
 ```yaml
 rest_command:
   wohnapp_sensor:
-    url: "https://europe-west3-<PROJECT_ID>.cloudfunctions.net/receiveIotData"
+    url: "https://europe-west3-wohnapp-mvp.cloudfunctions.net/receiveIotData"
     method: POST
     headers:
       Content-Type: application/json
@@ -242,7 +242,7 @@ Für MQTT-fähige Sensoren (Zigbee, Z-Wave, Shelly, …) kann Node-RED als Bridg
     "id": "http-out",
     "type": "http request",
     "method": "POST",
-    "url": "https://europe-west3-<PROJECT_ID>.cloudfunctions.net/receiveIotData"
+    "url": "https://europe-west3-wohnapp-mvp.cloudfunctions.net/receiveIotData"
   }
 ]
 ```
@@ -254,7 +254,7 @@ Für MQTT-fähige Sensoren (Zigbee, Z-Wave, Shelly, …) kann Node-RED als Bridg
 **curl:**
 ```bash
 curl -X POST \
-  https://europe-west3-<PROJECT_ID>.cloudfunctions.net/receiveIotData \
+  https://europe-west3-wohnapp-mvp.cloudfunctions.net/receiveIotData \
   -H "Content-Type: application/json" \
   -H "X-Api-Key: <api-key>" \
   -d '{
@@ -274,7 +274,7 @@ curl -X POST \
 ```python
 import requests
 
-WEBHOOK_URL = "https://europe-west3-<PROJECT_ID>.cloudfunctions.net/receiveIotData"
+WEBHOOK_URL = "https://europe-west3-wohnapp-mvp.cloudfunctions.net/receiveIotData"
 API_KEY     = "<api-key>"
 TENANT_ID   = "<tenant-id>"
 

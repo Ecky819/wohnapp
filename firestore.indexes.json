@@ -170,6 +170,22 @@
         { "fieldPath": "recipientId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "energy_readings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "readingDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "energy_readings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "unitId", "order": "ASCENDING" },
+        { "fieldPath": "readingDate", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
