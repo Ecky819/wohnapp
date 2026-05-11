@@ -18,12 +18,21 @@ void main() async {
   await initializeDateFormatting('de_DE');
 
   // Enable Firestore offline persistence (disk cache, unlimited size)
-  FirebaseFirestore.instance.settings = const Settings(
-    persistenceEnabled: true,
-    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  try {
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+  } catch (e) {
+    debugPrint('Firestore settings error (non-fatal): $e');
+  }
+
+  // Init notifications in the background — requestPermission can hang on
+  // simulators where APNS is unavailable; the app must not block on it.
+  NotificationService.instance.init().catchError(
+    (e) => debugPrint('NotificationService init error (non-fatal): $e'),
   );
 
-  await NotificationService.instance.init();
   runApp(const ProviderScope(child: MyApp()));
 }
 
