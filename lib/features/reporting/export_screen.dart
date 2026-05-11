@@ -308,7 +308,7 @@ class _InvoiceExportTabState extends ConsumerState<_InvoiceExportTab> {
 
     const sep = ';';
     // EXTF header (29 semicolon-separated fields, no ListToCsv for row 1)
-    final header = '"EXTF"${sep}700${sep}21${sep}"Buchungsstapel"${sep}9'
+    final header = '"EXTF"${sep}700${sep}21$sep"Buchungsstapel"${sep}9'
         '$sep"$created"000${sep}0$sep$sep$sep'
         '$sep$berater$sep$mandant$sep$wjBeginn${sep}4'
         '$sep"$datumVon"$sep"$datumBis"$sep"Rechnungsexport"$sep'

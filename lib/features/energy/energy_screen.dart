@@ -72,10 +72,7 @@ class _EnergyScreenState extends ConsumerState<EnergyScreen>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      builder: (_) => ProviderScope(
-        parent: ProviderScope.containerOf(context),
-        child: _AddReadingSheet(initialType: _types[_tabs.index]),
-      ),
+      builder: (_) => _AddReadingSheet(initialType: _types[_tabs.index]),
     );
   }
 }
@@ -645,7 +642,6 @@ class _ImportButtonState extends ConsumerState<_ImportButton> {
         final unitId = row[2].toString().trim();
         final unitName = row[3].toString().trim();
         final valueStr = row[4].toString().trim().replaceAll(',', '.');
-        final unit2 = row.length > 5 ? row[5].toString().trim() : '';
         final meterNo = row.length > 6 ? row[6].toString().trim() : '';
         final note = row.length > 7 ? row[7].toString().trim() : '';
 

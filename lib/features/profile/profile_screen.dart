@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import '../../models/app_user.dart';
 import '../../models/notification_preferences.dart';
 import '../../repositories/building_repository.dart';
-import '../../repositories/user_repository.dart';
 import '../../router.dart';
 import '../../services/routing_service.dart';
 import '../../user_provider.dart';

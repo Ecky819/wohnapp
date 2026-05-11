@@ -210,8 +210,9 @@ class _CreateStatementScreenState extends ConsumerState<CreateStatementScreen> {
       final pdfUrl = await repo.uploadPdf(orgId, pdfFileName, pdfBytes);
 
       // 4. Firestore-Dokument anlegen
-      if (mounted)
+      if (mounted) {
         setState(() => _savingStep = 'Abrechnung wird gespeichert …');
+      }
       final finalStmt = AnnualStatement(
         id: '',
         tenantId: stmt.tenantId,

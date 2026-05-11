@@ -405,8 +405,9 @@ class _MonthlyBarChart extends StatelessWidget {
                     showTitles: true,
                     getTitlesWidget: (v, _) {
                       final idx = v.toInt();
-                      if (idx < 0 || idx >= buckets.length)
+                      if (idx < 0 || idx >= buckets.length) {
                         return const SizedBox.shrink();
+                      }
                       return Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(
@@ -695,8 +696,9 @@ class _ResolutionLineChart extends StatelessWidget {
                     interval: 1,
                     getTitlesWidget: (v, _) {
                       final idx = v.toInt();
-                      if (idx < 0 || idx >= buckets.length)
+                      if (idx < 0 || idx >= buckets.length) {
                         return const SizedBox.shrink();
+                      }
                       return Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(

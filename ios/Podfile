@@ -1,5 +1,5 @@
 # Uncomment this line to define a global platform for your project
-platform :ios, '14.0'
+platform :ios, '16.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -28,7 +28,7 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  use_frameworks!
+  use_frameworks! :linkage => :static
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
@@ -37,12 +37,56 @@ target 'Runner' do
 end
 
 post_install do |installer|
-  installer.pods_project.targets.each do |target|
+  installer.pods_project.native_targets.each do |target|
+    # 1. Deployment target and Apple Silicon simulator architecture
     flutter_additional_ios_build_settings(target)
     target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
-      # Exclude x86_64 simulator arch — Firebase C++ libs (-G flag) break on x86_64
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0'
       config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'x86_64'
     end
+
+    # 2. gRPC-Core / gRPC-C++: Clang 18 (Xcode 26) treats missing template
+    #    argument after 'template' keyword as error — suppress the warning.
+    if ['gRPC-Core', 'gRPC-C++'].include?(target.name)
+      target.build_configurations.each do |config|
+        flags = config.build_settings['OTHER_CPLUSPLUSFLAGS'] || '$(inherited)'
+        config.build_settings['OTHER_CPLUSPLUSFLAGS'] =
+          "#{flags} -Wno-missing-template-arg-list-after-template-kw"
+      end
+    end
+
+    # 3. BoringSSL-GRPC: -GCC_WARN_INHIBIT_ALL_WARNINGS in per-file
+    #    COMPILER_FLAGS — Clang parses it as unsupported -G flag.
+    target.source_build_phase.files.each do |build_file|
+      next unless build_file.settings && build_file.settings['COMPILER_FLAGS']
+      flags = build_file.settings['COMPILER_FLAGS']
+      if flags.include?('-GCC_WARN_INHIBIT_ALL_WARNINGS')
+        build_file.settings['COMPILER_FLAGS'] = flags.gsub('-GCC_WARN_INHIBIT_ALL_WARNINGS', '').strip
+      end
+    end
+  end
+
+  # Save all in-memory changes to Pods.xcodeproj
+  installer.pods_project.save
+
+  # 4. Also set EXCLUDED_ARCHS on the Runner app target itself
+  require 'xcodeproj'
+  runner_project = Xcodeproj::Project.open(File.expand_path('../Runner.xcodeproj', __FILE__))
+  runner_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'x86_64'
+    end
+  end
+  runner_project.save
+
+  # 5. Patch xcconfig files:
+  #    a) Remove -G<n> GCC flags (Clang doesn't support for ARM targets)
+  #    b) Remove old Intel-era EXCLUDED_ARCHS arm64 for simulator
+  Dir.glob(File.join(installer.sandbox.root, '**', '*.xcconfig')).each do |path|
+    content = File.read(path)
+    patched = content
+      .gsub(/-G\d*\s*/, '')
+      .gsub(/^EXCLUDED_ARCHS\[sdk=iphonesimulator\*\]\s*=.*arm64.*\n/, '')
+    File.write(path, patched) if patched != content
   end
 end

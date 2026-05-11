@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import '../../models/insurance_claim.dart';
 import '../../models/ticket.dart';
 import '../../repositories/activity_repository.dart';
-import '../../repositories/ticket_repository.dart';
 import '../../ticket_provider.dart';
 import '../../widgets/app_state_widgets.dart';
 
@@ -65,7 +64,6 @@ class _ClaimBodyState extends ConsumerState<_ClaimBody> {
   DateTime? _reportedAt;
   DateTime? _settledAt;
 
-  static final _dateFmt = DateFormat('dd.MM.yyyy');
   static final _eurFmt = NumberFormat('#,##0.00', 'de_DE');
 
   @override
