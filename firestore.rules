@@ -330,6 +330,30 @@ service cloud.firestore {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // rental_agreements/{agreementId}
+    // Mietverhältnisse inkl. Mietvertrags-URL
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    match /rental_agreements/{agreementId} {
+      // Manager liest alle Mietverhältnisse des eigenen Mandanten.
+      allow read: if isManager() && resource.data.tenantId == userTenantId();
+
+      // Mieter liest sein eigenes Mietverhältnis (verknüpftes userId).
+      allow read: if isTenantUser() &&
+        resource.data.userId == request.auth.uid;
+
+      // Manager erstellt Mietverhältnisse für den eigenen Mandanten.
+      allow create: if isManager() &&
+        request.resource.data.tenantId == userTenantId();
+
+      // Manager aktualisiert (Status, Vertrags-URL …).
+      allow update: if isManager() && resource.data.tenantId == userTenantId();
+
+      // Manager darf löschen.
+      allow delete: if isManager() && resource.data.tenantId == userTenantId();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // sensor_readings/{readingId}
     // IoT-Sensor-Messwerte — werden ausschließlich via Cloud Function
     // (Admin SDK) geschrieben. Flutter liest nur.

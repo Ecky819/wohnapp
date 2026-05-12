@@ -1,21 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
-import '../../models/app_user.dart';
-import '../../models/unit.dart';
-import '../../repositories/building_repository.dart';
+import '../../models/rental_agreement.dart';
+import '../../repositories/rental_agreement_repository.dart';
 import '../../router.dart';
-import '../../user_provider.dart';
 import '../../widgets/app_state_widgets.dart';
-
-// ─── Providers ────────────────────────────────────────────────────────────────
-
-final _allTenantsProvider = StreamProvider<List<AppUser>>((ref) {
-  final tenantId = ref.watch(currentUserProvider).valueOrNull?.tenantId ?? '';
-  if (tenantId.isEmpty) return const Stream.empty();
-  return ref.read(userRepositoryProvider).watchTenants(tenantId);
-});
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -24,51 +15,66 @@ class TenantsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final tenantsAsync = ref.watch(_allTenantsProvider);
-    final units = ref.watch(_allUnitsProvider);
+    final agreementsAsync = ref.watch(rentalAgreementsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Mieter')),
-      body: tenantsAsync.when(
+      appBar: AppBar(title: const Text('Mietverhältnisse')),
+      floatingActionButton: FloatingActionButton.extended(
+        icon: const Icon(Icons.add),
+        label: const Text('Neu anlegen'),
+        onPressed: () => context
+            .push(AppRoutes.createRentalAgreement)
+            .then((created) {
+          if (created == true && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Mietverhältnis angelegt')),
+            );
+          }
+        }),
+      ),
+      body: agreementsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => ErrorState(message: e.toString()),
-        data: (tenants) {
-          if (tenants.isEmpty) {
+        data: (agreements) {
+          if (agreements.isEmpty) {
             return const EmptyState(
-              icon: Icons.people_outlined,
-              title: 'Keine Mieter vorhanden',
-              subtitle: 'Einladungen erstellen um Mieter hinzuzufügen.',
+              icon: Icons.description_outlined,
+              title: 'Keine Mietverhältnisse',
+              subtitle:
+                  'Tippe auf „Neu anlegen" um einen Mietvertrag einzupflegen.',
             );
           }
 
-          final unitById = {for (final u in units) u.id: u};
-
-          final assigned =
-              tenants.where((t) => t.unitId != null && t.unitId!.isNotEmpty).toList();
-          final unassigned =
-              tenants.where((t) => t.unitId == null || t.unitId!.isEmpty).toList();
+          final active =
+              agreements.where((a) => a.status == 'active').toList();
+          final notice =
+              agreements.where((a) => a.status == 'notice_given').toList();
+          final ended =
+              agreements.where((a) => a.status == 'ended').toList();
 
           return ListView(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.fromLTRB(0, 8, 0, 80),
             children: [
-              if (assigned.isNotEmpty) ...[
+              if (active.isNotEmpty) ...[
                 _SectionHeader(
-                  label: 'Wohnung zugewiesen',
-                  count: assigned.length,
-                  color: Colors.green,
-                ),
-                ...assigned.map((t) => _TenantTile(
-                      tenant: t,
-                      unit: t.unitId != null ? unitById[t.unitId] : null,
-                    )),
+                    label: 'Aktiv',
+                    count: active.length,
+                    color: Colors.green),
+                ...active.map((a) => _AgreementTile(agreement: a)),
               ],
-              if (unassigned.isNotEmpty) ...[
+              if (notice.isNotEmpty) ...[
                 _SectionHeader(
-                  label: 'Keine Wohnung',
-                  count: unassigned.length,
-                  color: Colors.orange,
-                ),
-                ...unassigned.map((t) => _TenantTile(tenant: t, unit: null)),
+                    label: 'Kündigung',
+                    count: notice.length,
+                    color: Colors.orange),
+                ...notice.map((a) => _AgreementTile(agreement: a)),
+              ],
+              if (ended.isNotEmpty) ...[
+                _SectionHeader(
+                    label: 'Beendet',
+                    count: ended.length,
+                    color: Colors.grey),
+                ...ended.map((a) => _AgreementTile(agreement: a)),
               ],
             ],
           );
@@ -77,17 +83,6 @@ class TenantsScreen extends ConsumerWidget {
     );
   }
 }
-
-// ─── Provider: alle Units des Tenants ────────────────────────────────────────
-
-/// Flat list of all units across all buildings for the current tenant.
-/// Uses a regular Provider that watches each building's unitsProvider individually.
-final _allUnitsProvider = Provider<List<Unit>>((ref) {
-  final buildings = ref.watch(buildingsProvider).valueOrNull ?? [];
-  return buildings
-      .expand<Unit>((b) => ref.watch(unitsProvider(b.id)).valueOrNull ?? [])
-      .toList();
-});
 
 // ─── Section header ───────────────────────────────────────────────────────────
 
@@ -140,179 +135,84 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-// ─── Tenant tile ──────────────────────────────────────────────────────────────
+// ─── Agreement tile ───────────────────────────────────────────────────────────
 
-class _TenantTile extends ConsumerWidget {
-  const _TenantTile({required this.tenant, required this.unit});
-  final AppUser tenant;
-  final Unit? unit;
-
-  void _showUnassignedSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    backgroundColor:
-                        Theme.of(context).colorScheme.primaryContainer,
-                    child: Text(
-                      tenant.name.isNotEmpty
-                          ? tenant.name[0].toUpperCase()
-                          : '?',
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        tenant.name.isNotEmpty ? tenant.name : tenant.email,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600, fontSize: 16),
-                      ),
-                      if (tenant.name.isNotEmpty)
-                        Text(tenant.email,
-                            style: const TextStyle(
-                                fontSize: 13, color: Colors.grey)),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-              const Row(
-                children: [
-                  Icon(Icons.home_outlined,
-                      size: 16, color: Colors.orange),
-                  SizedBox(width: 8),
-                  Text(
-                    'Noch keine Wohnung zugewiesen.',
-                    style: TextStyle(color: Colors.orange, fontSize: 13),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Wähle eine Wohnung in den Gebäude-Details\num diesen Mieter zuzuweisen.',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  icon: const Icon(Icons.location_city_outlined),
-                  label: const Text('Zu Gebäude'),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    context.push(AppRoutes.buildings);
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: CircleAvatar(
-        backgroundColor:
-            Theme.of(context).colorScheme.primaryContainer,
-        child: Text(
-          tenant.name.isNotEmpty ? tenant.name[0].toUpperCase() : '?',
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.primary,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-      title: Text(
-        tenant.name.isNotEmpty ? tenant.name : tenant.email,
-        style: const TextStyle(fontWeight: FontWeight.w500),
-      ),
-      subtitle: Text(
-        tenant.name.isNotEmpty ? tenant.email : '',
-        style: const TextStyle(fontSize: 12),
-      ),
-      trailing: unit != null
-          ? _UnitChip(unit: unit!)
-          : const _UnassignedChip(),
-      onTap: unit != null
-          ? () => context.push(AppRoutes.unitDetailPath(unit!.id))
-          : () => _showUnassignedSheet(context),
-    );
-  }
-}
-
-class _UnitChip extends StatelessWidget {
-  const _UnitChip({required this.unit});
-  final Unit unit;
+class _AgreementTile extends StatelessWidget {
+  const _AgreementTile({required this.agreement});
+  final RentalAgreement agreement;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 120),
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.green.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.green.shade300),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.apartment_outlined,
-              size: 12, color: Colors.green),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              unit.displayName,
-              style: const TextStyle(
-                  fontSize: 11,
-                  color: Colors.green,
-                  fontWeight: FontWeight.w600),
-              overflow: TextOverflow.ellipsis,
+    final df = DateFormat('dd.MM.yyyy');
+    final dateRange = agreement.endDate != null
+        ? '${df.format(agreement.startDate)} – ${df.format(agreement.endDate!)}'
+        : 'ab ${df.format(agreement.startDate)}';
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: ListTile(
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: CircleAvatar(
+          backgroundColor:
+              Theme.of(context).colorScheme.primaryContainer,
+          child: Text(
+            agreement.tenantName.isNotEmpty
+                ? agreement.tenantName[0].toUpperCase()
+                : '?',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.bold,
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _UnassignedChip extends StatelessWidget {
-  const _UnassignedChip();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.orange.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.orange.shade300),
-      ),
-      child: const Text(
-        'Keine Wohnung',
-        style: TextStyle(
-            fontSize: 11,
-            color: Colors.orange,
-            fontWeight: FontWeight.w600),
+        ),
+        title: Text(
+          agreement.tenantName,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                const Icon(Icons.location_city_outlined,
+                    size: 12, color: Colors.grey),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    '${agreement.buildingName} · ${agreement.unitName}',
+                    style: const TextStyle(fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(dateRange,
+                style:
+                    const TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            AppStatusBadge(
+              label: agreement.statusLabel,
+              color: agreement.statusColor,
+            ),
+            const SizedBox(height: 4),
+            Icon(
+              Icons.attach_file,
+              size: 14,
+              color:
+                  agreement.hasContract ? Colors.green : Colors.grey.shade400,
+            ),
+          ],
+        ),
+        onTap: () => context
+            .push(AppRoutes.rentalAgreementDetailPath(agreement.id)),
       ),
     );
   }

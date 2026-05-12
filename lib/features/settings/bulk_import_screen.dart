@@ -4,10 +4,13 @@ import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../models/invitation.dart';
+import '../../models/rental_agreement.dart';
 import '../../repositories/building_repository.dart';
 import '../../repositories/invitation_repository.dart';
+import '../../repositories/rental_agreement_repository.dart';
 import '../../user_provider.dart';
 
 // ─── CSV templates ────────────────────────────────────────────────────────────
@@ -19,10 +22,16 @@ const _unitsCsvTemplate =
     'Gartenweg 4;Gartenweg 4, 12345 Stadt;App. A;1;45;;';
 
 const _invitesCsvTemplate =
-    'Name;E-Mail;Rolle\n'
-    'Max Mustermann;max@example.com;Mieter\n'
-    'Lieschen Müller;lieschen@example.com;Mieter\n'
-    'Hans Handwerker;hans@example.com;Handwerker';
+    'Name;E-Mail;Rolle;Gebäude;Wohnung\n'
+    'Max Mustermann;max@example.com;Mieter;Musterstraße 1;Wohnung 01\n'
+    'Lieschen Müller;lieschen@example.com;Mieter;Gartenweg 4;App. A\n'
+    'Hans Handwerker;hans@example.com;Handwerker;;';
+
+const _agreementsCsvTemplate =
+    'Name;E-Mail;Gebäude;Wohnung;Mietbeginn;Mietende;Kaltmiete;Kaution\n'
+    'Max Mustermann;max@example.com;Musterstraße 1;Wohnung 01;01.01.2024;;850;2550\n'
+    'Anna Schmidt;anna@example.com;Gartenweg 4;App. A;15.03.2023;31.12.2025;720;2160\n'
+    'Peter Meier;peter@example.com;Musterstraße 1;Wohnung 02;01.06.2022;;;';
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -32,13 +41,14 @@ class BulkImportScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Bulk-Import'),
           bottom: const TabBar(
             tabs: [
               Tab(icon: Icon(Icons.apartment_outlined), text: 'Wohnungen'),
+              Tab(icon: Icon(Icons.description_outlined), text: 'Mietverträge'),
               Tab(icon: Icon(Icons.group_add_outlined), text: 'Einladungen'),
             ],
           ),
@@ -46,6 +56,7 @@ class BulkImportScreen extends ConsumerWidget {
         body: const TabBarView(
           children: [
             _UnitsImportTab(),
+            _AgreementsImportTab(),
             _InvitesImportTab(),
           ],
         ),
@@ -420,7 +431,346 @@ class _UnitDetailChip extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// TAB 2 — Einladungen
+// TAB 2 — Mietverhältnisse
+// ═══════════════════════════════════════════════════════════════════════════════
+
+class _AgreementsImportTab extends ConsumerStatefulWidget {
+  const _AgreementsImportTab();
+
+  @override
+  ConsumerState<_AgreementsImportTab> createState() =>
+      _AgreementsImportTabState();
+}
+
+class _AgreementsImportTabState
+    extends ConsumerState<_AgreementsImportTab> {
+  List<_AgreementRow>? _rows;
+  String? _error;
+  bool _importing = false;
+  int _done = 0;
+  int _total = 0;
+  final _importErrors = <String>[];
+
+  Future<void> _pickFile() async {
+    setState(() {
+      _error = null;
+      _rows = null;
+      _done = 0;
+      _total = 0;
+      _importErrors.clear();
+    });
+
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+      withData: true,
+    );
+    if (result == null || result.files.single.bytes == null) return;
+
+    try {
+      String content;
+      try {
+        content = utf8.decode(result.files.single.bytes!);
+      } catch (_) {
+        content = latin1.decode(result.files.single.bytes!);
+      }
+
+      final rows = const CsvToListConverter(
+        fieldDelimiter: ';',
+        eol: '\n',
+      ).convert(content);
+
+      final data = rows.skip(1).where((r) => r.length >= 4).toList();
+      if (data.isEmpty) {
+        throw const FormatException('Keine Datenzeilen gefunden.');
+      }
+
+      final parsed = data
+          .map(_AgreementRow.fromCsvRow)
+          .where((r) => r.name.isNotEmpty && r.buildingName.isNotEmpty && r.unitName.isNotEmpty)
+          .toList();
+
+      if (parsed.isEmpty) {
+        throw const FormatException('Alle Zeilen fehlen Name, Gebäude oder Wohnung.');
+      }
+
+      setState(() => _rows = parsed);
+    } catch (e) {
+      setState(() => _error = 'Fehler beim Einlesen: $e');
+    }
+  }
+
+  Future<void> _import() async {
+    final rows = _rows;
+    if (rows == null || rows.isEmpty) return;
+
+    final tenantId =
+        ref.read(currentUserProvider).valueOrNull?.tenantId ?? '';
+    if (tenantId.isEmpty) return;
+
+    setState(() {
+      _importing = true;
+      _done = 0;
+      _total = rows.length;
+      _importErrors.clear();
+    });
+
+    try {
+      // Load all buildings + units for matching
+      final buildings = await ref
+          .read(buildingRepositoryProvider)
+          .watchBuildings(tenantId)
+          .first;
+
+      final buildingByName = <String, dynamic>{
+        for (final b in buildings) b.name.toLowerCase().trim(): b,
+      };
+
+      final unitsByBuilding = <String, List<dynamic>>{};
+      for (final b in buildings) {
+        final units = await ref
+            .read(buildingRepositoryProvider)
+            .watchUnits(b.id, tenantId)
+            .first;
+        unitsByBuilding[b.id] = units;
+      }
+
+      final agreements = <RentalAgreement>[];
+      final errors = <String>[];
+
+      for (final row in rows) {
+        final building =
+            buildingByName[row.buildingName.toLowerCase().trim()];
+        if (building == null) {
+          errors.add('Gebäude nicht gefunden: "${row.buildingName}"');
+          continue;
+        }
+
+        final units = unitsByBuilding[building.id] ?? [];
+        final unit = units.cast<dynamic>().firstWhere(
+              (u) =>
+                  (u.name as String).toLowerCase().trim() ==
+                  row.unitName.toLowerCase().trim(),
+              orElse: () => null,
+            );
+        if (unit == null) {
+          errors.add(
+              'Wohnung nicht gefunden: "${row.unitName}" in "${row.buildingName}"');
+          continue;
+        }
+
+        agreements.add(RentalAgreement(
+          id: '',
+          tenantId: tenantId,
+          tenantName: row.name,
+          tenantEmail: row.email,
+          unitId: unit.id as String,
+          unitName: unit.name as String,
+          buildingId: building.id as String,
+          buildingName: building.name as String,
+          startDate: row.startDate ?? DateTime.now(),
+          endDate: row.endDate,
+          monthlyRent: row.monthlyRent,
+          deposit: row.deposit,
+          status: 'active',
+          createdAt: DateTime.now(),
+        ));
+      }
+
+      if (agreements.isNotEmpty) {
+        await ref.read(rentalAgreementRepositoryProvider).batchCreate(
+          agreements,
+          onProgress: (done, total) {
+            if (mounted) setState(() => _done = done);
+          },
+        );
+      }
+
+      setState(() => _importErrors.addAll(errors));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${agreements.length} Mietverhältnisse importiert'
+              '${errors.isNotEmpty ? ', ${errors.length} übersprungen' : ''}.',
+            ),
+            backgroundColor:
+                errors.isEmpty ? Colors.green : Colors.orange,
+          ),
+        );
+        if (errors.isEmpty) setState(() => _rows = null);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Import fehlgeschlagen: $e');
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = _rows;
+    return Column(
+      children: [
+        const _CsvFormatHint(
+          title:
+              'Format: Name;E-Mail;Gebäude;Wohnung;Mietbeginn;Mietende;Kaltmiete;Kaution',
+          template: _agreementsCsvTemplate,
+        ),
+        if (_error != null) _ErrorBanner(message: _error!),
+        if (_importErrors.isNotEmpty)
+          Container(
+            color: Colors.orange.shade50,
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${_importErrors.length} Zeilen übersprungen:',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 13)),
+                const SizedBox(height: 4),
+                ..._importErrors.map((e) => Text(e,
+                    style: const TextStyle(
+                        fontSize: 11, color: Colors.orange))),
+              ],
+            ),
+          ),
+        if (rows != null) ...[
+          _PreviewHeader(
+            count: rows.length,
+            label: 'Mietverhältnisse',
+            importing: _importing,
+            imported: _done,
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: rows.length,
+              itemBuilder: (_, i) {
+                final r = rows[i];
+                return ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.description_outlined, size: 18),
+                  title: Text(r.name,
+                      style: const TextStyle(fontSize: 13)),
+                  subtitle: Text(
+                    '${r.buildingName} › ${r.unitName}',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  trailing: r.monthlyRent != null
+                      ? Text('${r.monthlyRent!.toStringAsFixed(0)} €',
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.grey))
+                      : null,
+                );
+              },
+            ),
+          ),
+        ] else
+          const Expanded(
+            child: Center(
+              child: Text('Noch keine CSV geladen.',
+                  style: TextStyle(color: Colors.grey)),
+            ),
+          ),
+        SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: _importing
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      LinearProgressIndicator(
+                        value: _total > 0 ? _done / _total : null,
+                      ),
+                      const SizedBox(height: 8),
+                      Text('$_done / $_total importiert…'),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.upload_file_outlined),
+                          label: const Text('CSV auswählen'),
+                          onPressed: _pickFile,
+                        ),
+                      ),
+                      if (rows != null && rows.isNotEmpty) ...[
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            icon: const Icon(Icons.download_done_outlined),
+                            label: Text('${rows.length} importieren'),
+                            onPressed: _import,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Agreement data class ─────────────────────────────────────────────────────
+
+class _AgreementRow {
+  const _AgreementRow({
+    required this.name,
+    required this.email,
+    required this.buildingName,
+    required this.unitName,
+    this.startDate,
+    this.endDate,
+    this.monthlyRent,
+    this.deposit,
+  });
+
+  final String name;
+  final String email;
+  final String buildingName;
+  final String unitName;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final double? monthlyRent;
+  final double? deposit;
+
+  factory _AgreementRow.fromCsvRow(List<dynamic> r) {
+    return _AgreementRow(
+      name: r[0].toString().trim(),
+      email: r.length > 1 ? r[1].toString().trim() : '',
+      buildingName: r.length > 2 ? r[2].toString().trim() : '',
+      unitName: r.length > 3 ? r[3].toString().trim() : '',
+      startDate: r.length > 4 ? _parseDate(r[4].toString()) : null,
+      endDate: r.length > 5 ? _parseDate(r[5].toString()) : null,
+      monthlyRent: r.length > 6 ? _parseDouble(r[6].toString()) : null,
+      deposit: r.length > 7 ? _parseDouble(r[7].toString()) : null,
+    );
+  }
+
+  static final _df = DateFormat('dd.MM.yyyy');
+
+  static DateTime? _parseDate(String s) {
+    if (s.trim().isEmpty) return null;
+    try {
+      return _df.parseStrict(s.trim());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static double? _parseDouble(String s) {
+    if (s.trim().isEmpty) return null;
+    return double.tryParse(s.trim().replaceAll(',', '.'));
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// TAB 3 — Einladungen
 // ═══════════════════════════════════════════════════════════════════════════════
 
 class _InvitesImportTab extends ConsumerStatefulWidget {
@@ -477,6 +827,8 @@ class _InvitesImportTabState extends ConsumerState<_InvitesImportTab> {
             name: r[0].toString().trim(),
             email: r.length > 1 ? r[1].toString().trim() : '',
             isContractor: isContractor,
+            buildingName: r.length > 3 ? r[3].toString().trim() : '',
+            unitName: r.length > 4 ? r[4].toString().trim() : '',
           );
         }).where((row) => row.name.isNotEmpty).toList();
       });
@@ -499,18 +851,59 @@ class _InvitesImportTabState extends ConsumerState<_InvitesImportTab> {
       _results.clear();
     });
 
+    // Load buildings+units once for unit name → ID resolution
+    final buildings = await ref
+        .read(buildingRepositoryProvider)
+        .watchBuildings(tenantId)
+        .first;
+    final buildingByName = {
+      for (final b in buildings) b.name.toLowerCase().trim(): b,
+    };
+    final unitsByBuilding = <String, List<dynamic>>{};
+    for (final b in buildings) {
+      unitsByBuilding[b.id] = await ref
+          .read(buildingRepositoryProvider)
+          .watchUnits(b.id, tenantId)
+          .first;
+    }
+
     final invRepo = ref.read(invitationRepositoryProvider);
 
     for (final row in rows) {
       try {
+        // Try to resolve unit for tenant rows that have building+unit names
+        String? unitId;
+        String? unitName;
+        if (!row.isContractor &&
+            row.buildingName.isNotEmpty &&
+            row.unitName.isNotEmpty) {
+          final building =
+              buildingByName[row.buildingName.toLowerCase().trim()];
+          if (building != null) {
+            final units = unitsByBuilding[building.id] ?? [];
+            final unit = units.cast<dynamic>().firstWhere(
+                  (u) =>
+                      (u.name as String).toLowerCase().trim() ==
+                      row.unitName.toLowerCase().trim(),
+                  orElse: () => null,
+                );
+            unitId = unit?.id as String?;
+            unitName = unit?.name as String?;
+          }
+        }
+
         final code = await invRepo.create(
           tenantId: tenantId,
           role: row.isContractor
               ? InvitationRole.contractor
               : InvitationRole.tenantUser,
           validFor: const Duration(days: 30),
+          unitId: unitId,
+          unitName: unitName,
         );
-        _results.add('✓ ${row.name} → $code');
+        final unitInfo =
+            unitName != null ? ' ($unitName)' : '';
+        _results.add('✓ ${row.name}$unitInfo → $code');
         setState(() => _imported++);
       } catch (e) {
         _results.add('✗ ${row.name}: $e');
@@ -534,7 +927,7 @@ class _InvitesImportTabState extends ConsumerState<_InvitesImportTab> {
     return Column(
       children: [
         const _CsvFormatHint(
-          title: 'Format: Name;E-Mail;Rolle (Mieter/Handwerker)',
+          title: 'Format: Name;E-Mail;Rolle;Gebäude;Wohnung',
           template: _invitesCsvTemplate,
         ),
         if (_error != null) _ErrorBanner(message: _error!),
@@ -585,9 +978,14 @@ class _InvitesImportTabState extends ConsumerState<_InvitesImportTab> {
                     size: 18,
                   ),
                   title: Text(r.name, style: const TextStyle(fontSize: 13)),
-                  subtitle: r.email.isNotEmpty
-                      ? Text(r.email, style: const TextStyle(fontSize: 11))
-                      : null,
+                  subtitle: Text(
+                    [
+                      if (r.email.isNotEmpty) r.email,
+                      if (r.buildingName.isNotEmpty && r.unitName.isNotEmpty)
+                        '${r.buildingName} › ${r.unitName}',
+                    ].join(' · '),
+                    style: const TextStyle(fontSize: 11),
+                  ),
                   trailing: Text(
                     r.isContractor ? 'Handwerker' : 'Mieter',
                     style: TextStyle(
@@ -659,10 +1057,14 @@ class _InviteRow {
     required this.name,
     required this.email,
     required this.isContractor,
+    this.buildingName = '',
+    this.unitName = '',
   });
   final String name;
   final String email;
   final bool isContractor;
+  final String buildingName;
+  final String unitName;
 }
 
 // ─── Shared widgets ───────────────────────────────────────────────────────────

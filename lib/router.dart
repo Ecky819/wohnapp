@@ -7,6 +7,8 @@ import 'features/analytics/analytics_screen.dart';
 import 'features/auth/register_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/calendar/calendar_screen.dart';
+import 'features/tenants/create_rental_agreement_screen.dart';
+import 'features/tenants/rental_agreement_detail_screen.dart';
 import 'features/tenants/tenants_screen.dart';
 import 'features/dashboard/contractor_home_screen.dart';
 import 'features/dashboard/manager_home_screen.dart';
@@ -64,10 +66,13 @@ abstract class AppRoutes {
   static const createStatement = '/statements/create';
   static const tenantStatements = '/my-statements';
   static const energy = '/energy';
+  static const createRentalAgreement = '/rental-agreement/create';
+  static const rentalAgreementDetail = '/rental-agreement/:id';
 
   static String ticketDetailPath(String id) => '/ticket/$id';
   static String unitDetailPath(String id) => '/unit/$id';
   static String invoiceDetailPath(String id) => '/invoice/$id';
+  static String rentalAgreementDetailPath(String id) => '/rental-agreement/$id';
   static String guestReportPath({
     required String unitId,
     required String tenantId,
@@ -271,6 +276,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           tenantId: state.uri.queryParameters['tenantId'] ?? '',
           unitName: Uri.decodeComponent(
               state.uri.queryParameters['unitName'] ?? ''),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.createRentalAgreement,
+        builder: (_, __) => const CreateRentalAgreementScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.rentalAgreementDetail,
+        builder: (_, state) => RentalAgreementDetailScreen(
+          agreementId: state.pathParameters['id']!,
         ),
       ),
     ],

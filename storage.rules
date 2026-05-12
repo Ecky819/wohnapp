@@ -83,6 +83,13 @@ service firebase.storage {
         underSizeLimit(10);
     }
 
+    // ── rental_contracts/{agreementId}/{filename} ─────────────────────────────
+    // Mietvertrags-PDFs: nur Manager schreibt, eingeloggte Nutzer lesen.
+    match /rental_contracts/{agreementId}/{filename} {
+      allow read:  if isAuth();
+      allow write: if isManager() && isPdf() && underSizeLimit(20);
+    }
+
     // ── logos/{tenantId}/{filename} ───────────────────────────────────────────
     // Mandanten-Logo für White-Label-Branding.
     // Lesen: alle eingeloggten Nutzer (App-Theming braucht das Logo).
