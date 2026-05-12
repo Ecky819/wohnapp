@@ -29,17 +29,16 @@ service firebase.storage {
       return request.resource.size <= maxMb * 1024 * 1024;
     }
 
-    // Liest Rolle und tenantId des eingeloggten Users aus Firestore.
-    function userDoc() {
-      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
-    }
-
+    // Rolle und tenantId kommen aus den Custom JWT Claims (gesetzt von
+    // syncUserClaims Cloud Function) — kein Firestore-Roundtrip nötig.
     function isManager() {
-      return isAuth() && userDoc().role == 'manager';
+      return isAuth() &&
+        request.auth.token.firebase.sign_in_provider != 'anonymous' &&
+        request.auth.token.role == 'manager';
     }
 
     function userTenantId() {
-      return userDoc().tenantId;
+      return request.auth.token.tenantId;
     }
 
     // ── tickets/{uid}/{ticketId}/{filename} ───────────────────────────────────
@@ -88,6 +87,7 @@ service firebase.storage {
     // Mandanten-Logo für White-Label-Branding.
     // Lesen: alle eingeloggten Nutzer (App-Theming braucht das Logo).
     // Schreiben: nur Manager des eigenen Mandanten, max 2 MB, nur Bilder.
+    // Rollenprüfung via Custom JWT Claims — kein Firestore-Roundtrip.
     match /logos/{tenantId}/{filename} {
       allow read:  if isAuth();
       allow write: if isManager() &&

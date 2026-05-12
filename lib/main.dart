@@ -73,20 +73,76 @@ class _MyAppState extends ConsumerState<MyApp> {
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
     final tenant = ref.watch(tenantProvider).valueOrNull;
-    final seedColor = tenant?.primaryColor ?? Colors.indigo;
+    final primary = tenant?.primaryColor ?? Colors.indigo;
 
     return MaterialApp.router(
       debugShowCheckedModeBanner: false,
       routerConfig: router,
-      theme: ThemeData(colorSchemeSeed: seedColor, useMaterial3: true),
-      darkTheme: ThemeData(
-        colorSchemeSeed: seedColor,
-        brightness: Brightness.dark,
-        useMaterial3: true,
-      ),
+      theme: _buildTheme(primary, Brightness.light),
+      darkTheme: _buildTheme(primary, Brightness.dark),
       themeMode: ThemeMode.system,
       builder: (context, child) => _OfflineBannerWrapper(child: child!),
     );
+  }
+
+  /// Builds a Material 3 theme that uses the tenant's exact primary color
+  /// for filled buttons, FABs and AppBar.
+  /// For outlined/text buttons the color is auto-darkened to WCAG 4.5:1
+  /// contrast so light brand colors remain readable on light surfaces.
+  static ThemeData _buildTheme(Color primary, Brightness brightness) {
+    final seedScheme = ColorScheme.fromSeed(
+      seedColor: primary,
+      brightness: brightness,
+    );
+
+    final scheme = seedScheme.copyWith(
+      primary: primary,
+      onPrimary: _onColor(primary),
+      secondaryContainer: primary,
+      onSecondaryContainer: _onColor(primary),
+    );
+
+    // Outlined / text buttons show the primary as text color.
+    // Darken it until it passes WCAG AA contrast against the surface.
+    final textFg = _wcagReadable(primary, seedScheme.surface);
+
+    return ThemeData(
+      colorScheme: scheme,
+      useMaterial3: true,
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(foregroundColor: textFg),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(foregroundColor: textFg),
+      ),
+    );
+  }
+
+  /// Returns white for dark backgrounds, black for light (WCAG contrast).
+  static Color _onColor(Color bg) =>
+      bg.computeLuminance() < 0.35 ? Colors.white : Colors.black;
+
+  /// Darkens [color] in steps until it achieves ≥4.5:1 contrast against
+  /// [surface]. Falls back to [surface]'s on-color if no adjustment works.
+  static Color _wcagReadable(Color color, Color surface) {
+    final surfLum = surface.computeLuminance();
+    Color c = color;
+    for (var i = 0; i < 25; i++) {
+      final fgLum = c.computeLuminance();
+      final contrast = surfLum > fgLum
+          ? (surfLum + 0.05) / (fgLum + 0.05)
+          : (fgLum + 0.05) / (surfLum + 0.05);
+      if (contrast >= 4.5) return c;
+      // Darken by 8% per step
+      c = Color.fromARGB(
+        (c.a * 255.0).round().clamp(0, 255),
+        (c.r * 255.0 * 0.92).round().clamp(0, 255),
+        (c.g * 255.0 * 0.92).round().clamp(0, 255),
+        (c.b * 255.0 * 0.92).round().clamp(0, 255),
+      );
+    }
+    // Fallback: use black or white depending on surface brightness
+    return _onColor(surface);
   }
 }
 

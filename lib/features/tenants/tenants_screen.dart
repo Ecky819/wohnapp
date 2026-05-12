@@ -35,7 +35,7 @@ class TenantsScreen extends ConsumerWidget {
         data: (tenants) {
           if (tenants.isEmpty) {
             return const EmptyState(
-              icon: Icons.people_outline,
+              icon: Icons.people_outlined,
               title: 'Keine Mieter vorhanden',
               subtitle: 'Einladungen erstellen um Mieter hinzuzufügen.',
             );
@@ -147,6 +147,85 @@ class _TenantTile extends ConsumerWidget {
   final AppUser tenant;
   final Unit? unit;
 
+  void _showUnassignedSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor:
+                        Theme.of(context).colorScheme.primaryContainer,
+                    child: Text(
+                      tenant.name.isNotEmpty
+                          ? tenant.name[0].toUpperCase()
+                          : '?',
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        tenant.name.isNotEmpty ? tenant.name : tenant.email,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 16),
+                      ),
+                      if (tenant.name.isNotEmpty)
+                        Text(tenant.email,
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.grey)),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              const Row(
+                children: [
+                  Icon(Icons.home_outlined,
+                      size: 16, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Text(
+                    'Noch keine Wohnung zugewiesen.',
+                    style: TextStyle(color: Colors.orange, fontSize: 13),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Wähle eine Wohnung in den Gebäude-Details\num diesen Mieter zuzuweisen.',
+                style: TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.location_city_outlined),
+                  label: const Text('Zu Gebäude'),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    context.push(AppRoutes.buildings);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return ListTile(
@@ -175,7 +254,7 @@ class _TenantTile extends ConsumerWidget {
           : const _UnassignedChip(),
       onTap: unit != null
           ? () => context.push(AppRoutes.unitDetailPath(unit!.id))
-          : null,
+          : () => _showUnassignedSheet(context),
     );
   }
 }

@@ -35,6 +35,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
   late final TextEditingController _sapWebhookSecretCtrl;
   late final TextEditingController _sapCompanyDbCtrl;
   late final TextEditingController _sapCostCenterCtrl;
+  late final TextEditingController _regUrlCtrl;
 
   bool _saving = false;
   bool _initialized = false;
@@ -57,6 +58,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
     _sapWebhookSecretCtrl.dispose();
     _sapCompanyDbCtrl.dispose();
     _sapCostCenterCtrl.dispose();
+    _regUrlCtrl.dispose();
     super.dispose();
   }
 
@@ -79,6 +81,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
     _sapWebhookSecretCtrl = TextEditingController(text: tenant.sapWebhookSecret ?? '');
     _sapCompanyDbCtrl = TextEditingController(text: tenant.sapCompanyDb ?? '');
     _sapCostCenterCtrl = TextEditingController(text: tenant.sapCostCenter ?? '');
+    _regUrlCtrl = TextEditingController(text: tenant.registrationBaseUrl ?? '');
     _initialized = true;
   }
 
@@ -100,6 +103,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
     _sapWebhookSecretCtrl = TextEditingController();
     _sapCompanyDbCtrl = TextEditingController();
     _sapCostCenterCtrl = TextEditingController();
+    _regUrlCtrl = TextEditingController();
     _initialized = true;
   }
 
@@ -132,6 +136,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
       sapWebhookSecret: opt(_sapWebhookSecretCtrl),
       sapCompanyDb: opt(_sapCompanyDbCtrl),
       sapCostCenter: opt(_sapCostCenterCtrl),
+      registrationBaseUrl: opt(_regUrlCtrl),
     );
 
     try {
@@ -208,7 +213,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
                     ),
                     onChanged: (_) => setState(() {}),
                     validator: (v) =>
-                        v == null || v.trim().isEmpty ? 'Pflichtfeld' : null,
+                        v == null || v.trim().isEmpty ? 'Bitte Unternehmensname eingeben' : null,
                   ),
                   const SizedBox(height: 14),
 
@@ -279,6 +284,27 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
                       prefixIcon: Icon(Icons.location_on_outlined),
                     ),
                     maxLines: 2,
+                  ),
+                  const SizedBox(height: 14),
+
+                  TextFormField(
+                    controller: _regUrlCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'App-URL (Registrierungslink)',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.link_outlined),
+                      hintText: 'https://meine-wowi.app/register',
+                      helperText:
+                          'Basis-URL für QR-Codes in Einladungen. Leer lassen für Standard-URL.',
+                    ),
+                    keyboardType: TextInputType.url,
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) return null;
+                      if (!v.trim().startsWith('https://')) {
+                        return 'Muss mit https:// beginnen';
+                      }
+                      return null;
+                    },
                   ),
 
                   const SizedBox(height: 28),
@@ -616,26 +642,64 @@ class _LogoUploadState extends ConsumerState<_LogoUpload> {
     });
 
     try {
-      final bytes = await file.readAsBytes();
-      final ext = file.name.split('.').last.toLowerCase();
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('logos/${widget.tenantId}/logo.$ext');
+      final currentUser = ref.read(currentUserProvider).valueOrNull;
+      final tenantId = widget.tenantId;
 
-      final task = ref.putData(
+      if (currentUser == null || tenantId.isEmpty) {
+        throw Exception('Kein Mandant zugewiesen – bitte neu einloggen.');
+      }
+      if (currentUser.role != 'manager') {
+        throw Exception(
+          'Account "${currentUser.email}" hat Rolle "${currentUser.role}" '
+          '– nur Manager dürfen das Logo ändern.',
+        );
+      }
+
+      final bytes = await file.readAsBytes();
+
+      // Map extension to proper MIME type; default to image/jpeg
+      final ext = file.name.contains('.')
+          ? file.name.split('.').last.toLowerCase()
+          : 'jpg';
+      const mimeMap = {
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'gif': 'image/gif',
+        'webp': 'image/webp',
+        'heic': 'image/heic',
+        'heif': 'image/heif',
+      };
+      final mimeType = mimeMap[ext] ?? 'image/jpeg';
+
+      final storageRef = FirebaseStorage.instance
+          .ref()
+          .child('logos/$tenantId/logo.$ext');
+
+      final task = storageRef.putData(
         bytes,
-        SettableMetadata(contentType: 'image/$ext'),
+        SettableMetadata(contentType: mimeType),
       );
 
-      task.snapshotEvents.listen((snap) {
-        if (mounted) {
-          setState(() =>
-              _progress = snap.bytesTransferred / snap.totalBytes);
-        }
-      });
+      // onError prevents unhandled stream error; task result is awaited below
+      final sub = task.snapshotEvents.listen(
+        (snap) {
+          if (mounted && snap.totalBytes > 0) {
+            setState(() =>
+                _progress = snap.bytesTransferred / snap.totalBytes);
+          }
+        },
+        onError: (_) {},
+        cancelOnError: true,
+      );
 
-      await task;
-      final url = await ref.getDownloadURL();
+      try {
+        await task;
+      } finally {
+        await sub.cancel();
+      }
+
+      final url = await storageRef.getDownloadURL();
       await _saveUrl(url);
 
       if (mounted) {
@@ -645,9 +709,11 @@ class _LogoUploadState extends ConsumerState<_LogoUpload> {
       }
     } catch (e) {
       if (mounted) {
+        final msg = e.toString().contains('unauthorized')
+            ? 'Keine Berechtigung. Stelle sicher, dass dein Account die Rolle "Manager" hat.'
+            : 'Fehler: $e';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(msg), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -754,7 +820,7 @@ class _LogoUploadState extends ConsumerState<_LogoUpload> {
               if (hasLogo) ...[
                 const SizedBox(height: 8),
                 TextButton.icon(
-                  icon: const Icon(Icons.delete_outline,
+                  icon: const Icon(Icons.delete_outlined,
                       size: 18, color: Colors.red),
                   label: const Text('Logo entfernen',
                       style: TextStyle(color: Colors.red)),

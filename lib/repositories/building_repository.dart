@@ -63,12 +63,17 @@ class BuildingRepository {
         .map((s) => s.docs.map(Building.fromDoc).toList());
   }
 
-  Stream<List<Unit>> watchUnits(String buildingId) {
+  Stream<List<Unit>> watchUnits(String buildingId, String tenantId) {
     return _units
         .where('buildingId', isEqualTo: buildingId)
-        .orderBy('name')
+        .where('tenantId', isEqualTo: tenantId)
         .snapshots()
-        .map((s) => s.docs.map(Unit.fromDoc).toList());
+        .map((s) {
+          // Sort in Dart — avoids a 3-field composite index (buildingId+tenantId+name)
+          final units = s.docs.map(Unit.fromDoc).toList()
+            ..sort((a, b) => a.name.compareTo(b.name));
+          return units;
+        });
   }
 
   // ── Single-item writes (manual entry) ─────────────────────────────────────
@@ -203,7 +208,10 @@ final buildingsProvider = StreamProvider<List<Building>>((ref) {
 final unitsProvider =
     StreamProvider.family<List<Unit>, String>((ref, buildingId) {
   if (buildingId.isEmpty) return const Stream.empty();
-  return ref.read(buildingRepositoryProvider).watchUnits(buildingId);
+  final tenantId =
+      ref.watch(currentUserProvider).valueOrNull?.tenantId ?? '';
+  if (tenantId.isEmpty) return const Stream.empty();
+  return ref.read(buildingRepositoryProvider).watchUnits(buildingId, tenantId);
 });
 
 /// Single unit by id (FutureProvider).

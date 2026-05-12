@@ -112,10 +112,10 @@ class _UnitDetailBody extends ConsumerWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.apartment_outlined,
                       size: 28,
-                      color: Colors.indigo,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -708,7 +708,7 @@ class _DeviceTile extends ConsumerWidget {
                     value: 'delete',
                     child: ListTile(
                       dense: true,
-                      leading: Icon(Icons.delete_outline, color: Colors.red),
+                      leading: Icon(Icons.delete_outlined, color: Colors.red),
                       title: Text(
                         'Löschen',
                         style: TextStyle(color: Colors.red),

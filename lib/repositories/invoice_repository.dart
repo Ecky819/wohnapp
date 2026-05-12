@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/invoice.dart';
+import '../user_provider.dart';
 
 class InvoiceRepository {
   InvoiceRepository(this._db);
@@ -13,12 +14,17 @@ class InvoiceRepository {
 
   // ─── Streams ──────────────────────────────────────────────────────────────
 
-  Stream<List<Invoice>> watchForTicket(String ticketId) {
+  Stream<List<Invoice>> watchForTicket(String ticketId, String tenantId) {
     return _col
         .where('ticketId', isEqualTo: ticketId)
-        .orderBy('createdAt', descending: true)
+        .where('tenantId', isEqualTo: tenantId)
         .snapshots()
-        .map((s) => s.docs.map(Invoice.fromFirestore).toList());
+        .map((s) {
+          final list = s.docs.map(Invoice.fromFirestore).toList()
+            ..sort((a, b) =>
+                (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)));
+          return list;
+        });
   }
 
   Stream<List<Invoice>> watchPending(String tenantId) {
@@ -108,7 +114,9 @@ final invoiceRepositoryProvider = Provider<InvoiceRepository>((ref) {
 
 final invoicesForTicketProvider =
     StreamProvider.family<List<Invoice>, String>((ref, ticketId) {
-  return ref.read(invoiceRepositoryProvider).watchForTicket(ticketId);
+  final tenantId = ref.watch(currentUserProvider).valueOrNull?.tenantId ?? '';
+  if (tenantId.isEmpty) return const Stream.empty();
+  return ref.read(invoiceRepositoryProvider).watchForTicket(ticketId, tenantId);
 });
 
 final pendingInvoicesProvider =

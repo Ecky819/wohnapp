@@ -161,15 +161,16 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
             ),
       body: Column(
         children: [
-          if (!_searchActive) ...[
+          // MaintenanceBanner nur im normalen Modus — kein Platz beim Suchen
+          if (!_searchActive)
             _MaintenanceBanner(
               onTap: () => context.push(AppRoutes.buildings),
             ),
-            _FilterBar(
-              selected: _statusFilter,
-              onSelected: _applyFilter,
-            ),
-          ],
+          // FilterBar ist immer sichtbar, auch beim Suchen
+          _FilterBar(
+            selected: _statusFilter,
+            onSelected: _applyFilter,
+          ),
           Expanded(child: _searchActive ? _buildSearchResults() : _buildBody()),
         ],
       ),
@@ -241,8 +242,10 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
                 context.push(AppRoutes.profile);
             }
           },
-          itemBuilder: (_) => const [
-            PopupMenuItem(
+          itemBuilder: (_) => [
+            // ── Auswertung ──────────────────────────────────────────────
+            const _MenuHeader('Auswertung'),
+            const PopupMenuItem(
               value: 'analytics',
               child: ListTile(
                 dense: true,
@@ -251,7 +254,7 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
                 contentPadding: EdgeInsets.zero,
               ),
             ),
-            PopupMenuItem(
+            const PopupMenuItem(
               value: 'calendar',
               child: ListTile(
                 dense: true,
@@ -260,70 +263,7 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
                 contentPadding: EdgeInsets.zero,
               ),
             ),
-            PopupMenuItem(
-              value: 'export',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.download_outlined),
-                title: Text('Export / DATEV'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            PopupMenuItem(
-              value: 'buildings',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.location_city_outlined),
-                title: Text('Gebäude'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            PopupMenuItem(
-              value: 'tenants',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.people_outline),
-                title: Text('Mieter'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            PopupMenuItem(
-              value: 'invitations',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.mail_outline),
-                title: Text('Einladungen'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            PopupMenuItem(
-              value: 'statements',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.description_outlined),
-                title: Text('Jahresabrechnungen'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            PopupMenuItem(
-              value: 'tenantSettings',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.domain_outlined),
-                title: Text('Mandanten-Einstellungen'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            PopupMenuItem(
-              value: 'bulkImport',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.upload_file_outlined),
-                title: Text('Bulk-Import'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            PopupMenuItem(
+            const PopupMenuItem(
               value: 'energy',
               child: ListTile(
                 dense: true,
@@ -332,8 +272,78 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
                 contentPadding: EdgeInsets.zero,
               ),
             ),
-            PopupMenuDivider(),
-            PopupMenuItem(
+            // ── Objekte & Personen ──────────────────────────────────────
+            const PopupMenuDivider(),
+            const _MenuHeader('Objekte & Personen'),
+            const PopupMenuItem(
+              value: 'buildings',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.location_city_outlined),
+                title: Text('Gebäude'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'tenants',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.people_outlined),
+                title: Text('Mieter'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'invitations',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.mail_outlined),
+                title: Text('Einladungen'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            // ── Finanzen & Daten ────────────────────────────────────────
+            const PopupMenuDivider(),
+            const _MenuHeader('Finanzen & Daten'),
+            const PopupMenuItem(
+              value: 'statements',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.description_outlined),
+                title: Text('Jahresabrechnungen'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'export',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.download_outlined),
+                title: Text('Export / DATEV'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'bulkImport',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.upload_file_outlined),
+                title: Text('Bulk-Import'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            // ── Einstellungen ───────────────────────────────────────────
+            const PopupMenuDivider(),
+            const PopupMenuItem(
+              value: 'tenantSettings',
+              child: ListTile(
+                dense: true,
+                leading: Icon(Icons.domain_outlined),
+                title: Text('Mandanten-Einstellungen'),
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+            const PopupMenuItem(
               value: 'profile',
               child: ListTile(
                 dense: true,
@@ -378,9 +388,14 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
 
   Widget _buildSearchResults() {
     if (_searchQuery.isEmpty) {
-      return const Center(
-        child: Text('Suchbegriff eingeben …',
-            style: TextStyle(color: Colors.grey)),
+      return Center(
+        child: Text(
+          _statusFilter != null
+              ? 'Suchbegriff eingeben (Filter: ${_statusFilterLabel()} aktiv) …'
+              : 'Suchbegriff eingeben …',
+          style: const TextStyle(color: Colors.grey),
+          textAlign: TextAlign.center,
+        ),
       );
     }
 
@@ -391,17 +406,23 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
       data: (all) {
         final q = _searchQuery;
         final results = all.where((t) {
-          return t.title.toLowerCase().contains(q) ||
+          final matchesText = t.title.toLowerCase().contains(q) ||
               t.description.toLowerCase().contains(q) ||
               (t.unitName?.toLowerCase().contains(q) ?? false) ||
               (t.assignedToName?.toLowerCase().contains(q) ?? false);
+          // Respects the active status filter, same as the main list
+          final matchesFilter =
+              _statusFilter == null || t.status == _statusFilter;
+          return matchesText && matchesFilter;
         }).toList();
 
         if (results.isEmpty) {
           return EmptyState(
             icon: Icons.search_off,
             title: 'Keine Ergebnisse',
-            subtitle: 'Kein Ticket enthält „$_searchQuery".',
+            subtitle: _statusFilter != null
+                ? 'Kein „${_statusFilterLabel()}"-Ticket enthält „$_searchQuery".'
+                : 'Kein Ticket enthält „$_searchQuery".',
           );
         }
 
@@ -419,6 +440,15 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
         );
       },
     );
+  }
+
+  String _statusFilterLabel() {
+    return switch (_statusFilter) {
+      'open' => 'Offen',
+      'in_progress' => 'In Bearbeitung',
+      'done' => 'Erledigt',
+      _ => '',
+    };
   }
 
   Widget _buildBody() {
@@ -462,7 +492,9 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
           final ticket = _tickets[i];
           return _TicketCard(
             ticket: ticket,
-            onTap: () => context.push(AppRoutes.ticketDetailPath(ticket.id)),
+            onTap: () => context
+                .push(AppRoutes.ticketDetailPath(ticket.id))
+                .then((_) => _refresh()),
             onAssign: () => _showAssignSheet(ticket),
           );
         },
@@ -801,13 +833,49 @@ class _PendingInvoiceButton extends ConsumerWidget {
     final count = pendingAsync.valueOrNull?.length ?? 0;
 
     return IconButton(
-      tooltip: 'Offene Rechnungen',
+      tooltip: count > 0
+          ? '$count offene ${count == 1 ? 'Rechnung' : 'Rechnungen'} zur Prüfung'
+          : 'Rechnungen',
       icon: Badge(
         isLabelVisible: count > 0,
         label: Text('$count'),
         child: const Icon(Icons.receipt_long_outlined),
       ),
       onPressed: onTap,
+    );
+  }
+}
+
+// ─── Popup menu section header (non-selectable) ───────────────────────────────
+
+class _MenuHeader extends PopupMenuEntry<Never> {
+  const _MenuHeader(this.label);
+  final String label;
+
+  @override
+  double get height => 28;
+
+  @override
+  bool represents(Never? value) => false;
+
+  @override
+  State<_MenuHeader> createState() => _MenuHeaderState();
+}
+
+class _MenuHeaderState extends State<_MenuHeader> {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
+      child: Text(
+        widget.label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      ),
     );
   }
 }

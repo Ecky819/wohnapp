@@ -6,7 +6,9 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../models/invitation.dart';
 import '../../repositories/invitation_repository.dart';
+import '../../repositories/tenant_repository.dart';
 import '../../user_provider.dart';
+import '../../widgets/app_state_widgets.dart';
 
 final _invitationsStreamProvider = StreamProvider<List<Invitation>>((ref) {
   return ref.watch(invitationRepositoryProvider).watchAll();
@@ -30,7 +32,11 @@ class InvitationsScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Fehler: $e')),
         data: (invitations) => invitations.isEmpty
-            ? const Center(child: Text('Noch keine Einladungen'))
+            ? const EmptyState(
+                icon: Icons.mail_outlined,
+                title: 'Noch keine Einladungen',
+                subtitle: 'Tippe auf „Einladung erstellen" um Mieter oder Handwerker einzuladen.',
+              )
             : ListView.builder(
                 padding: const EdgeInsets.all(12),
                 itemCount: invitations.length,
@@ -54,14 +60,18 @@ class InvitationsScreen extends ConsumerWidget {
 
 // ─── Einladungs-Card ──────────────────────────────────────────────────────────
 
-class _InvitationCard extends StatelessWidget {
+class _InvitationCard extends ConsumerWidget {
   const _InvitationCard({required this.inv});
   final Invitation inv;
 
-  static const _regBaseUrl = 'https://wohnapp-mvp.web.app/register';
+  static const _fallbackBaseUrl = 'https://wohnapp-mvp.web.app/register';
 
-  void _showQrDialog(BuildContext context, Invitation inv) {
-    final regUrl = '$_regBaseUrl?code=${inv.code}';
+  void _showQrDialog(BuildContext context, WidgetRef ref, Invitation inv) {
+    final tenant = ref.read(tenantProvider).valueOrNull;
+    final base = (tenant?.registrationBaseUrl?.isNotEmpty == true)
+        ? tenant!.registrationBaseUrl!
+        : _fallbackBaseUrl;
+    final regUrl = '$base?code=${inv.code}';
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -117,7 +127,7 @@ class _InvitationCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final df = DateFormat('dd.MM.yy HH:mm');
     final statusColor = inv.used
         ? Colors.grey
@@ -164,7 +174,7 @@ class _InvitationCard extends StatelessWidget {
               tooltip: 'QR-Code anzeigen',
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
-              onPressed: () => _showQrDialog(context, inv),
+              onPressed: () => _showQrDialog(context, ref, inv),
             ),
           ],
         ),

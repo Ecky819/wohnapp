@@ -12,6 +12,7 @@ class Tenant {
     this.contactPhone,
     this.address,
     this.imprintUrl,
+    this.registrationBaseUrl,
     // SEPA / Bankverbindung
     this.bankAccountHolder,
     this.bankIban,
@@ -37,6 +38,7 @@ class Tenant {
   final String? contactPhone;
   final String? address;
   final String? imprintUrl;
+  final String? registrationBaseUrl;
   final String? bankAccountHolder;
   final String? bankIban;
   final String? bankBic;
@@ -77,6 +79,7 @@ class Tenant {
       contactPhone: data['contactPhone'] as String?,
       address: data['address'] as String?,
       imprintUrl: data['imprintUrl'] as String?,
+      registrationBaseUrl: data['registrationBaseUrl'] as String?,
       bankAccountHolder: data['bankAccountHolder'] as String?,
       bankIban: data['bankIban'] as String?,
       bankBic: data['bankBic'] as String?,
@@ -101,6 +104,7 @@ class Tenant {
         if (contactPhone != null) 'contactPhone': contactPhone,
         if (address != null) 'address': address,
         if (imprintUrl != null) 'imprintUrl': imprintUrl,
+        if (registrationBaseUrl != null) 'registrationBaseUrl': registrationBaseUrl,
         if (bankAccountHolder != null) 'bankAccountHolder': bankAccountHolder,
         if (bankIban != null) 'bankIban': bankIban,
         if (bankBic != null) 'bankBic': bankBic,

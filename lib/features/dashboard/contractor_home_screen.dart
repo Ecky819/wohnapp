@@ -161,7 +161,9 @@ class _ContractorHomeScreenState extends ConsumerState<ContractorHomeScreen> {
           final ticket = _tickets[i];
           return _ContractorTicketCard(
             ticket: ticket,
-            onTap: () => context.push(AppRoutes.ticketDetailPath(ticket.id)),
+            onTap: () => context
+                .push(AppRoutes.ticketDetailPath(ticket.id))
+                .then((_) => _refresh()),
           );
         },
       ),

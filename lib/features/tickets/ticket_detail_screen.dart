@@ -10,6 +10,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/activity_entry.dart';
+import '../../models/app_user.dart';
 import '../../models/comment.dart';
 import '../../models/insurance_claim.dart';
 import '../../models/invoice.dart';
@@ -36,8 +37,20 @@ class TicketDetailScreen extends ConsumerWidget {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Ticket archivieren?'),
-        content: Text(
-            '„${ticket.title}" wird archiviert und erscheint nicht mehr in den Listen.'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('„${ticket.title}" wird archiviert.'),
+            const SizedBox(height: 10),
+            const Text(
+              'Archivierte Tickets verschwinden aus dem Ticket-Board, '
+              'bleiben aber vollständig erhalten. '
+              'Du kannst sie jederzeit unter Export & Berichte einsehen.',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -167,20 +180,10 @@ class _TicketDetailBody extends ConsumerWidget {
 
           const SizedBox(height: 20),
 
-          // Titel + Status
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Text(
-                  ticket.title,
-                  style: const TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(width: 12),
-              _StatusBadge(ticket: ticket),
-            ],
+          // Titel (Status wird bereits in der Timeline oben angezeigt)
+          Text(
+            ticket.title,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
 
           const SizedBox(height: 12),
@@ -292,7 +295,7 @@ class _StatusTimeline extends StatelessWidget {
 
   static const _steps = [
     ('open', 'Gemeldet', Icons.flag_outlined),
-    ('assigned', 'Zugewiesen', Icons.person_outline),
+    ('assigned', 'Zugewiesen', Icons.person_outlined),
     ('in_progress', 'In Bearbeitung', Icons.build_outlined),
     ('done', 'Erledigt', Icons.check_circle_outline),
   ];
@@ -429,61 +432,155 @@ class _AppointmentBanner extends StatelessWidget {
 
 // ─── Contractor info card ─────────────────────────────────────────────────────
 
-class _ContractorInfoCard extends StatelessWidget {
+class _ContractorInfoCard extends ConsumerWidget {
   const _ContractorInfoCard({required this.ticket});
   final Ticket ticket;
 
+  void _showContractorSheet(BuildContext context, AppUser? contractor) {
+    final name = ticket.assignedToName ?? 'Handwerker';
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: Colors.green.withValues(alpha: 0.15),
+                    child: Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, color: Colors.green, fontSize: 18),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 16)),
+                      const Text('Handwerker',
+                          style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                ],
+              ),
+              if (contractor != null && contractor.email.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.email_outlined, size: 16, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Text(contractor.email,
+                        style: const TextStyle(fontSize: 13)),
+                  ],
+                ),
+                if (contractor.specializations.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.build_outlined, size: 16, color: Colors.grey),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          contractor.specializations.join(', '),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final name = ticket.assignedToName ?? 'Handwerker';
     final isDone = ticket.status == 'done';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Color.alphaBlend(
-          Colors.green.withValues(alpha: 0.08),
-          cs.surface,
-        ),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.green.withValues(alpha: 0.35)),
+    // Load contractor user data for the detail sheet (non-blocking)
+    final contractorAsync = ticket.assignedTo != null
+        ? ref.watch(_contractorProvider(ticket.assignedTo!))
+        : null;
+
+    return InkWell(
+      onTap: () => _showContractorSheet(
+        context,
+        contractorAsync?.valueOrNull,
       ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            radius: 22,
-            backgroundColor:
-                Color.alphaBlend(Colors.green.withValues(alpha: 0.15), cs.surface),
-            child: Text(
-              name.isNotEmpty ? name[0].toUpperCase() : '?',
-              style: const TextStyle(
-                  fontWeight: FontWeight.bold, color: Colors.green),
-            ),
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Color.alphaBlend(
+            Colors.green.withValues(alpha: 0.08),
+            cs.surface,
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isDone ? 'Erledigt von' : 'Zuständiger Handwerker',
-                  style: const TextStyle(
-                      fontSize: 11, color: Colors.green, fontWeight: FontWeight.w600),
-                ),
-                Text(name,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.green.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 22,
+              backgroundColor:
+                  Color.alphaBlend(Colors.green.withValues(alpha: 0.15), cs.surface),
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, color: Colors.green),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isDone ? 'Erledigt von' : 'Zuständiger Handwerker',
                     style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600)),
-              ],
+                        fontSize: 11, color: Colors.green, fontWeight: FontWeight.w600),
+                  ),
+                  Text(name,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
+                ],
+              ),
             ),
-          ),
-          const Icon(Icons.handyman_outlined, color: Colors.green, size: 20),
-        ],
+            const Icon(Icons.chevron_right, color: Colors.green, size: 20),
+          ],
+        ),
       ),
     );
   }
 }
+
+// Provider to load a single contractor by UID for the info sheet
+final _contractorProvider =
+    FutureProvider.family<AppUser?, String>((ref, uid) async {
+  final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+  if (!doc.exists) return null;
+  return AppUser.fromMap(uid, doc.data()!);
+});
 
 // ─── Image gallery ────────────────────────────────────────────────────────────
 
@@ -654,16 +751,6 @@ class _StatusButtons extends StatelessWidget {
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.ticket});
-  final Ticket ticket;
-
-  @override
-  Widget build(BuildContext context) => AppStatusBadge(
-        label: ticket.statusLabel,
-        color: ticket.statusColor,
-      );
-}
 
 class _DocumentTile extends StatelessWidget {
   const _DocumentTile({required this.doc});
@@ -796,7 +883,7 @@ class _ActivityLog extends ConsumerWidget {
       case ActivityType.statusChanged:
         return Icons.swap_horiz;
       case ActivityType.assigned:
-        return Icons.person_outline;
+        return Icons.person_outlined;
       case ActivityType.updated:
         return Icons.edit_outlined;
     }
@@ -861,7 +948,7 @@ class _CommentThreadState extends ConsumerState<_CommentThread> {
             style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
         const SizedBox(height: 12),
         commentsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const LinearProgressIndicator(),
           error: (e, _) => Text('Fehler: $e',
               style: const TextStyle(color: Colors.red)),
           data: (comments) {

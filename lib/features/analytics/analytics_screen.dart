@@ -333,12 +333,10 @@ class _AnalyticsBody extends StatelessWidget {
         const _SectionHeader('Handwerker-Auslastung'),
         const SizedBox(height: 10),
         if (data.contractorStats.isEmpty)
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text(
-              'Noch keine Handwerker im System.',
-              style: TextStyle(color: Colors.grey),
-            ),
+          const EmptyState(
+            icon: Icons.engineering_outlined,
+            title: 'Noch keine Handwerker',
+            subtitle: 'Handwerker können per Einladungscode registriert werden.',
           )
         else
           ...data.contractorStats.map((s) => _ContractorWorkloadTile(stat: s)),
@@ -492,14 +490,10 @@ class _StatusDonutChartState extends State<_StatusDonutChart> {
     final data = widget.data;
     if (data.total == 0) {
       return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Center(
-            child: Text(
-              'Noch keine Tickets vorhanden.',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
+        child: EmptyState(
+          icon: Icons.bar_chart_outlined,
+          title: 'Noch keine Tickets',
+          subtitle: 'Statistiken erscheinen sobald Schadensmeldungen eingehen.',
         ),
       );
     }
@@ -635,15 +629,10 @@ class _ResolutionLineChart extends StatelessWidget {
 
     if (spots.isEmpty) {
       return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Center(
-            child: Text(
-              'Noch keine erledigten Tickets für Auswertung.',
-              style: TextStyle(color: Colors.grey),
-              textAlign: TextAlign.center,
-            ),
-          ),
+        child: EmptyState(
+          icon: Icons.show_chart_outlined,
+          title: 'Noch keine Verlaufsdaten',
+          subtitle: 'Der Verlauf erscheint sobald Tickets abgeschlossen werden.',
         ),
       );
     }

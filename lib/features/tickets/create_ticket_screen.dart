@@ -309,6 +309,30 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
       appBar: AppBar(
         title: Text(_isManager ? 'Ticket anlegen' : 'Schaden melden'),
       ),
+      bottomNavigationBar: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: _isLoading
+              ? const Center(
+                  heightFactor: 1,
+                  child: SizedBox(
+                    height: 48,
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                )
+              : FilledButton.icon(
+                  icon: const Icon(Icons.check_circle_outline),
+                  label: Text(
+                    _isManager ? 'Ticket anlegen' : 'Schaden melden',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                  onPressed: _submit,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 52),
+                  ),
+                ),
+        ),
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -354,7 +378,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                   ),
                   validator: (v) => (_category == 'insurance_claim' &&
                           (v == null || v.trim().isEmpty))
-                      ? 'Pflichtfeld'
+                      ? 'Bitte Versicherungsgesellschaft eingeben'
                       : null,
                 ),
                 const SizedBox(height: 12),
@@ -423,8 +447,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
             const SizedBox(height: 8),
 
             buildingsAsync.when(
-              loading: () =>
-                  const LinearProgressIndicator(),
+              loading: () => const LinearProgressIndicator(),
               error: (e, _) => Text('Gebäude konnten nicht geladen werden: $e',
                   style: const TextStyle(color: Colors.red, fontSize: 12)),
               data: (buildings) => buildings.isEmpty
@@ -435,7 +458,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Text(
-                        'Noch keine Gebäude angelegt.\nManager kann Gebäude in Firestore hinzufügen.',
+                        'Noch keine Gebäude angelegt.',
                         style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     )
@@ -443,8 +466,11 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                       key: const ValueKey('building-dropdown'),
                       initialValue: _selectedBuilding,
                       hint: const Text('Gebäude wählen'),
-                      decoration:
-                          const InputDecoration(border: OutlineInputBorder()),
+                      decoration: const InputDecoration(
+                        labelText: 'Gebäude',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.home_work_outlined),
+                      ),
                       items: buildings
                           .map((b) => DropdownMenuItem(
                                 value: b,
@@ -458,41 +484,50 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                     ),
             ),
 
-            if (_selectedBuilding != null) ...[
-              const SizedBox(height: 10),
-              unitsAsync.when(
-                loading: () => const LinearProgressIndicator(),
-                error: (e, _) => Text('Fehler: $e',
-                    style: const TextStyle(color: Colors.red, fontSize: 12)),
-                data: (units) => units.isEmpty
-                    ? Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          'Keine Wohnungen für dieses Gebäude vorhanden.',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                      )
-                    : DropdownButtonFormField<Unit>(
-                        // key changes when building changes → widget reconstructs with null initialValue
-                        key: ValueKey(_selectedBuilding?.id ?? ''),
-                        initialValue: _selectedUnit,
-                        hint: const Text('Wohnung wählen'),
-                        decoration: const InputDecoration(
-                            border: OutlineInputBorder()),
-                        items: units
-                            .map((u) => DropdownMenuItem(
-                                  value: u,
-                                  child: Text(u.displayName),
-                                ))
-                            .toList(),
-                        onChanged: (u) => setState(() => _selectedUnit = u),
-                      ),
+            // Wohnungs-Dropdown ist immer sichtbar, aber erst nach Gebäude-Auswahl aktiv.
+            // So ist die Abhängigkeit auf einen Blick erkennbar.
+            const SizedBox(height: 10),
+            unitsAsync.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (_, e) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Text(
+                  'Wohnungen konnten nicht geladen werden.',
+                  style: TextStyle(fontSize: 12, color: Colors.red.shade700),
+                ),
               ),
-            ],
+              data: (units) => DropdownButtonFormField<Unit>(
+                key: ValueKey(_selectedBuilding?.id ?? 'no-building'),
+                initialValue: _selectedUnit,
+                hint: Text(
+                  _selectedBuilding == null
+                      ? 'Zuerst Gebäude wählen'
+                      : 'Wohnung wählen',
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Wohnung',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.door_front_door_outlined),
+                  // Visually signal disabled state
+                  fillColor: _selectedBuilding == null
+                      ? Colors.grey.shade100
+                      : null,
+                  filled: _selectedBuilding == null,
+                ),
+                items: _selectedBuilding == null
+                    ? []
+                    : units
+                        .map((u) => DropdownMenuItem(
+                              value: u,
+                              child: Text(u.displayName),
+                            ))
+                        .toList(),
+                // null items list disables the dropdown
+                onChanged: _selectedBuilding == null
+                    ? null
+                    : (u) => setState(() => _selectedUnit = u),
+              ),
+            ),
 
             const SizedBox(height: 16),
 
@@ -615,16 +650,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
               onPressed: _pickDocument,
             ),
 
-            const SizedBox(height: 24),
-
-            _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : ElevatedButton(
-                    onPressed: _submit,
-                    style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14)),
-                    child: const Text('Ticket erstellen'),
-                  ),
+            const SizedBox(height: 8),
           ],
         ),
       ),
@@ -656,7 +682,6 @@ class _AiAnalysisButton extends StatelessWidget {
       label: Text(analyzing ? 'KI analysiert …' : 'KI-Analyse starten'),
       onPressed: analyzing ? null : onAnalyze,
       style: OutlinedButton.styleFrom(
-        foregroundColor: Theme.of(context).colorScheme.primary,
         side: BorderSide(
           color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
         ),

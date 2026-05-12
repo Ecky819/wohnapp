@@ -16,28 +16,22 @@ service cloud.firestore {
         request.auth.token.firebase.sign_in_provider == 'anonymous';
     }
 
-    function userDoc() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    function userRole() {
-      return userDoc().role;
-    }
-
+    // Rolle und tenantId aus Custom JWT Claims — kein get()-Aufruf nötig.
+    // Claims werden von der syncUserClaims Cloud Function gesetzt.
     function userTenantId() {
-      return userDoc().tenantId;
+      return request.auth.token.tenantId;
     }
 
     function isManager() {
-      return isAuth() && !isAnonymous() && userRole() == 'manager';
+      return isAuth() && !isAnonymous() && request.auth.token.role == 'manager';
     }
 
     function isContractor() {
-      return isAuth() && !isAnonymous() && userRole() == 'contractor';
+      return isAuth() && !isAnonymous() && request.auth.token.role == 'contractor';
     }
 
     function isTenantUser() {
-      return isAuth() && !isAnonymous() && userRole() == 'tenant_user';
+      return isAuth() && !isAnonymous() && request.auth.token.role == 'tenant_user';
     }
 
     // Prüft ob ein Dokument zum selben Mandanten gehört wie der eingeloggte User.

@@ -214,7 +214,7 @@ class _ClaimBodyState extends ConsumerState<_ClaimBody> {
               prefixIcon: Icon(Icons.business_outlined),
             ),
             validator: (v) =>
-                v == null || v.trim().isEmpty ? 'Pflichtfeld' : null,
+                v == null || v.trim().isEmpty ? 'Bitte Versicherungsgesellschaft eingeben' : null,
           ),
           const SizedBox(height: 12),
 

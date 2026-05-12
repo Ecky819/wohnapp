@@ -11,6 +11,7 @@ import '../../models/tenant.dart';
 import '../../repositories/annual_statement_repository.dart';
 import '../../repositories/tenant_repository.dart';
 import '../../user_provider.dart';
+import '../../widgets/app_state_widgets.dart';
 
 class TenantStatementsScreen extends ConsumerWidget {
   const TenantStatementsScreen({super.key});
@@ -39,17 +40,10 @@ class _TenantStatementsList extends ConsumerWidget {
       error: (e, _) => Center(child: Text('Fehler: $e')),
       data: (stmts) {
         if (stmts.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.description_outlined,
-                    size: 48, color: Colors.grey),
-                SizedBox(height: 12),
-                Text('Noch keine Jahresabrechnungen vorhanden.',
-                    style: TextStyle(color: Colors.grey)),
-              ],
-            ),
+          return const EmptyState(
+            icon: Icons.description_outlined,
+            title: 'Noch keine Abrechnungen',
+            subtitle: 'Sobald die Hausverwaltung eine Jahresabrechnung versendet, erscheint sie hier.',
           );
         }
         return ListView.builder(

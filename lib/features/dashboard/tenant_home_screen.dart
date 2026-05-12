@@ -370,9 +370,9 @@ class _LiveTrackingCard extends StatelessWidget {
                       Text(
                         stepLabels[stepIndex],
                         style: TextStyle(
-                          fontSize: 9,
+                          fontSize: 11,
                           fontWeight: isCurrent
-                              ? FontWeight.bold
+                              ? FontWeight.w600
                               : FontWeight.normal,
                           color: isCurrent ? cs.primary : Colors.grey,
                         ),
@@ -439,10 +439,10 @@ class _RecentTickets extends ConsumerWidget {
       data: (tickets) {
         final recent = tickets.take(3).toList();
         if (recent.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Text('Noch keine Tickets erstellt.',
-                style: TextStyle(color: Colors.grey)),
+          return const EmptyState(
+            icon: Icons.confirmation_number_outlined,
+            title: 'Noch keine Tickets',
+            subtitle: 'Tippe auf „Schaden melden" um eine Meldung zu erstellen.',
           );
         }
         return Column(

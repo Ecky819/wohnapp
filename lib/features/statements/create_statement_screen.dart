@@ -10,6 +10,7 @@ import '../../models/app_user.dart';
 import '../../models/statement_position.dart';
 import '../../repositories/annual_statement_repository.dart';
 import '../../user_provider.dart';
+import '../../widgets/app_state_widgets.dart';
 import 'statement_pdf_generator.dart';
 
 // ─── Lokaler Entwurf einer Kostenposition (inkl. noch nicht hochgeladener Bilder)
@@ -280,7 +281,7 @@ class _CreateStatementScreenState extends ConsumerState<CreateStatementScreen> {
                               decoration: const InputDecoration(
                                 labelText: 'Mieter',
                                 border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.person_outline),
+                                prefixIcon: Icon(Icons.person_outlined),
                               ),
                               items: _tenants
                                   .map(
@@ -362,15 +363,10 @@ class _CreateStatementScreenState extends ConsumerState<CreateStatementScreen> {
                     ),
                     children: [
                       if (_positions.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          child: Center(
-                            child: Text(
-                              'Noch keine Positionen.\nTippe auf „Hinzufügen".',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ),
+                        const EmptyState(
+                          icon: Icons.receipt_long_outlined,
+                          title: 'Noch keine Positionen',
+                          subtitle: 'Tippe auf „Hinzufügen" um die erste Kostenposition anzulegen.',
                         )
                       else
                         ..._positions.asMap().entries.map(
@@ -619,7 +615,7 @@ class _PositionCard extends StatelessWidget {
             ),
             IconButton(
               icon: const Icon(
-                Icons.delete_outline,
+                Icons.delete_outlined,
                 size: 18,
                 color: Colors.red,
               ),
@@ -800,7 +796,7 @@ class _PositionSheetState extends State<_PositionSheet> {
                   border: OutlineInputBorder(),
                 ),
                 validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Pflichtfeld' : null,
+                    v == null || v.trim().isEmpty ? 'Bitte Bezeichnung eingeben' : null,
               ),
               const SizedBox(height: 12),
 
@@ -819,7 +815,7 @@ class _PositionSheetState extends State<_PositionSheet> {
                       ),
                       validator: (v) {
                         if (v == null || v.isEmpty) {
-                          return 'Pflichtfeld';
+                          return 'Bitte Betrag eingeben';
                         }
                         if (double.tryParse(v.replaceAll(',', '.')) == null) {
                           return 'Ungültig';
@@ -841,7 +837,7 @@ class _PositionSheetState extends State<_PositionSheet> {
                       ),
                       validator: (v) {
                         if (v == null || v.isEmpty) {
-                          return 'Pflichtfeld';
+                          return 'Bitte Prozentwert eingeben';
                         }
                         final d = double.tryParse(v.replaceAll(',', '.'));
                         if (d == null || d < 0 || d > 100) {

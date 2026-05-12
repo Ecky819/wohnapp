@@ -129,7 +129,7 @@ class _GuestReportScreenState extends ConsumerState<GuestReportScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_submitted) return const _SuccessView();
+    if (_submitted) return _SuccessView(onNewReport: () => setState(() => _submitted = false));
 
     return Scaffold(
       appBar: AppBar(title: const Text('Schaden melden')),
@@ -168,7 +168,7 @@ class _GuestReportScreenState extends ConsumerState<GuestReportScreen> {
             // ── Info text ───────────────────────────────────────────────
             const Row(
               children: [
-                Icon(Icons.info_outline, size: 16, color: Colors.grey),
+                Icon(Icons.info_outlined, size: 16, color: Colors.grey),
                 SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -280,28 +280,34 @@ class _GuestReportScreenState extends ConsumerState<GuestReportScreen> {
 // ─── Success view ─────────────────────────────────────────────────────────────
 
 class _SuccessView extends StatelessWidget {
-  const _SuccessView();
+  const _SuccessView({required this.onNewReport});
+
+  final VoidCallback onNewReport;
 
   @override
   Widget build(BuildContext context) {
+    final nav = Navigator.of(context);
+
     return Scaffold(
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check_circle_outline,
-                  color: Colors.green,
-                  size: 72,
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.check_circle_outline,
+                    color: Colors.green,
+                    size: 72,
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
@@ -319,8 +325,21 @@ class _SuccessView extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 40),
+              FilledButton.icon(
+                icon: const Icon(Icons.add_comment_outlined),
+                label: const Text('Weitere Meldung einreichen'),
+                onPressed: onNewReport,
+              ),
+              const SizedBox(height: 12),
               OutlinedButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () {
+                  if (nav.canPop()) {
+                    nav.pop();
+                  }
+                  // If opened via QR deep-link with no back stack,
+                  // the button simply does nothing — the user can close
+                  // the app or scan another QR code.
+                },
                 child: const Text('Schließen'),
               ),
             ],

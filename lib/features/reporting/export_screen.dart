@@ -777,7 +777,7 @@ class _SapExportTabState extends ConsumerState<_SapExportTab> {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
-                Icon(Icons.info_outline,
+                Icon(Icons.info_outlined,
                     size: 16, color: Colors.orange.shade800),
                 const SizedBox(width: 8),
                 Expanded(

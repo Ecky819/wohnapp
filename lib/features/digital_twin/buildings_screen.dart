@@ -53,8 +53,8 @@ class _BuildingSection extends ConsumerWidget {
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
-          leading: const Icon(Icons.location_city_outlined,
-              color: Colors.indigo),
+          leading: Icon(Icons.location_city_outlined,
+              color: Theme.of(context).colorScheme.primary),
           title: Text(building.name,
               style: const TextStyle(fontWeight: FontWeight.w600)),
           subtitle: Text(building.address,

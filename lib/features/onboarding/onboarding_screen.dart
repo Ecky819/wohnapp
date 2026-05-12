@@ -241,7 +241,7 @@ class _Step1State extends State<_Step1> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.business_outlined, size: 40, color: Colors.indigo),
+            Icon(Icons.business_outlined, size: 40, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 12),
             const Text(
               'Willkommen bei Wohnapp!',
@@ -261,7 +261,7 @@ class _Step1State extends State<_Step1> {
                 prefixIcon: Icon(Icons.business_outlined),
               ),
               validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Pflichtfeld' : null,
+                  v == null || v.trim().isEmpty ? 'Bitte Unternehmensname eingeben' : null,
             ),
             const SizedBox(height: 14),
             TextFormField(
@@ -337,7 +337,7 @@ class _Step2 extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.apartment_outlined, size: 40, color: Colors.indigo),
+            Icon(Icons.apartment_outlined, size: 40, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 12),
             const Text(
               'Erstes Gebäude',
@@ -358,7 +358,7 @@ class _Step2 extends StatelessWidget {
                 hintText: 'z.B. Musterstraße 1',
               ),
               validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Pflichtfeld' : null,
+                  v == null || v.trim().isEmpty ? 'Bitte Gebäudename eingeben' : null,
             ),
             const SizedBox(height: 14),
             TextFormField(
@@ -370,7 +370,7 @@ class _Step2 extends StatelessWidget {
               ),
               maxLines: 2,
               validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Pflichtfeld' : null,
+                  v == null || v.trim().isEmpty ? 'Bitte Adresse eingeben' : null,
             ),
             const SizedBox(height: 24),
             const Divider(),
@@ -389,7 +389,7 @@ class _Step2 extends StatelessWidget {
                 hintText: 'z.B. Wohnung 1 oder EG links',
               ),
               validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Pflichtfeld' : null,
+                  v == null || v.trim().isEmpty ? 'Bitte Wohnungsbezeichnung eingeben' : null,
             ),
           ],
         ),

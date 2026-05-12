@@ -1,17 +1,18 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../login_screen.dart' show translateFirebaseError;
 import '../../repositories/invitation_repository.dart';
+import '../../repositories/tenant_repository.dart';
 import '../../repositories/user_repository.dart';
 import '../../router.dart';
 import 'qr_scanner_screen.dart';
-import 'package:go_router/go_router.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key, this.prefillCode});
 
-  /// Pre-filled from deep link: wohnapp://invite?code=XXXX
   final String? prefillCode;
 
   @override
@@ -25,8 +26,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _codeController = TextEditingController();
 
   bool _isLoading = false;
+  bool _obscurePassword = true;
   String? _errorMessage;
-  String? _invitePreview; // shows role+tenant after code validation
+  // null = not validated, empty = invalid/too short, non-empty = valid preview
+  String? _invitePreview;
+  bool _codeValid = false;
 
   @override
   void initState() {
@@ -42,7 +46,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       MaterialPageRoute(builder: (_) => const QrScannerScreen()),
     );
     if (result == null) return;
-    // Support full registration URLs encoded in QR (e.g. https://…/register?code=XXXX)
     final code = _extractCode(result);
     _codeController.text = code.toUpperCase();
     await _previewCode(code);
@@ -58,15 +61,39 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   }
 
   Future<void> _previewCode(String code) async {
-    if (code.length < 8) return;
+    if (code.length < 8) {
+      setState(() {
+        _invitePreview = null;
+        _codeValid = false;
+      });
+      return;
+    }
     try {
       final inv = await ref
           .read(invitationRepositoryProvider)
           .validate(code.toUpperCase());
-      setState(() => _invitePreview =
-          'Einladung gültig: ${inv.roleLabel} · Tenant ${inv.tenantId}');
+
+      // Try to load company name for a friendlier preview
+      String orgName = inv.tenantId;
+      try {
+        final tenant = await ref
+            .read(tenantRepositoryProvider)
+            .watchTenant(inv.tenantId)
+            .first;
+        if (tenant?.name != null && tenant!.name.isNotEmpty) {
+          orgName = tenant.name;
+        }
+      } catch (_) {}
+
+      setState(() {
+        _invitePreview = '${inv.roleLabel} bei $orgName';
+        _codeValid = true;
+      });
     } catch (_) {
-      setState(() => _invitePreview = null);
+      setState(() {
+        _invitePreview = null;
+        _codeValid = false;
+      });
     }
   }
 
@@ -82,32 +109,22 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final userRepo = ref.read(userRepositoryProvider);
 
     try {
-      // 1. Validate invitation
       final invitation = await invRepo.validate(code);
 
-      // 2. Create Firebase Auth user
       final credential = await FirebaseAuth.instance
           .createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
-      // 3. Create Firestore user document with correct tenantId + role
-      await userRepo.getOrCreate(
-        credential.user!,
-        invitation: invitation,
-      );
-
-      // 4. Mark invitation as used
+      await userRepo.getOrCreate(credential.user!, invitation: invitation);
       await invRepo.markUsed(code);
-
-      // GoRouter redirect picks up the new auth state automatically
     } on InvitationException catch (e) {
       setState(() => _errorMessage = e.message);
     } on FirebaseAuthException catch (e) {
-      setState(() => _errorMessage = e.message ?? e.code);
-    } catch (e) {
-      setState(() => _errorMessage = 'Unbekannter Fehler: $e');
+      setState(() => _errorMessage = translateFirebaseError(e));
+    } catch (_) {
+      setState(() => _errorMessage = 'Registrierung fehlgeschlagen. Bitte versuche es erneut.');
     }
 
     setState(() => _isLoading = false);
@@ -123,6 +140,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Registrieren')),
       body: Form(
@@ -140,24 +159,40 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                 Expanded(
                   child: TextFormField(
                     controller: _codeController,
-                    decoration: InputDecoration(
-                      hintText: 'z.B. ABCD1234',
-                      suffixIcon: const Icon(Icons.key_outlined),
-                      helperText: _invitePreview,
-                      helperStyle: const TextStyle(color: Colors.green),
-                    ),
                     textCapitalization: TextCapitalization.characters,
+                    textInputAction: TextInputAction.next,
+                    decoration: InputDecoration(
+                      labelText: 'Einladungscode',
+                      hintText: 'z.B. ABCD1234',
+                      border: const OutlineInputBorder(),
+                      prefixIcon: const Icon(Icons.key_outlined),
+                      // Show green check when valid, nothing otherwise
+                      suffixIcon: _codeValid
+                          ? const Icon(Icons.check_circle, color: Colors.green)
+                          : null,
+                      helperText: _codeValid ? _invitePreview : null,
+                      helperStyle: const TextStyle(color: Colors.green),
+                      errorText: _codeController.text.length >= 8 && !_codeValid
+                          ? 'Ungültiger oder bereits verwendeter Code'
+                          : null,
+                    ),
                     onChanged: _previewCode,
-                    validator: (v) => (v == null || v.trim().length < 8)
-                        ? 'Einladungscode eingeben'
-                        : null,
+                    validator: (v) {
+                      if (v == null || v.trim().length < 8) {
+                        return 'Bitte Einladungscode eingeben (mind. 8 Zeichen)';
+                      }
+                      if (!_codeValid) return 'Ungültiger oder bereits verwendeter Code';
+                      return null;
+                    },
                   ),
                 ),
                 const SizedBox(width: 8),
-                IconButton.outlined(
-                  icon: const Icon(Icons.qr_code_scanner),
-                  tooltip: 'QR-Code scannen',
-                  onPressed: _scanQr,
+                Tooltip(
+                  message: 'QR-Code scannen',
+                  child: IconButton.outlined(
+                    icon: const Icon(Icons.qr_code_scanner),
+                    onPressed: _scanQr,
+                  ),
                 ),
               ],
             ),
@@ -171,39 +206,79 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             TextFormField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(hintText: 'E-Mail'),
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'E-Mail',
+                prefixIcon: Icon(Icons.email_outlined),
+                border: OutlineInputBorder(),
+              ),
               validator: (v) {
                 final e = v?.trim() ?? '';
-                if (e.isEmpty) return 'E-Mail eingeben';
+                if (e.isEmpty) return 'Bitte E-Mail eingeben';
                 if (!e.contains('@') || !e.contains('.')) {
-                  return 'Keine gültige E-Mail';
+                  return 'Keine gültige E-Mail-Adresse';
                 }
                 return null;
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _passwordController,
-              obscureText: true,
-              decoration: const InputDecoration(hintText: 'Passwort'),
+              obscureText: _obscurePassword,
+              textInputAction: TextInputAction.done,
+              onFieldSubmitted: (_) => _register(),
+              decoration: InputDecoration(
+                labelText: 'Passwort',
+                prefixIcon: const Icon(Icons.lock_outlined),
+                border: const OutlineInputBorder(),
+                helperText: 'Mindestens 6 Zeichen',
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscurePassword
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
+                  tooltip: _obscurePassword ? 'Passwort anzeigen' : 'Passwort verbergen',
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
+                ),
+              ),
               validator: (v) =>
-                  (v == null || v.length < 6) ? 'Mindestens 6 Zeichen' : null,
+                  (v == null || v.length < 6) ? 'Mindestens 6 Zeichen erforderlich' : null,
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
 
             if (_errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(_errorMessage!,
-                    style: const TextStyle(color: Colors.red)),
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: cs.errorContainer,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline,
+                        color: cs.onErrorContainer, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _errorMessage!,
+                        style: TextStyle(
+                            color: cs.onErrorContainer, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
               ),
 
             _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : ElevatedButton(
+                : FilledButton(
                     onPressed: _register,
-                    style: ElevatedButton.styleFrom(
+                    style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     child: const Text('Konto erstellen'),

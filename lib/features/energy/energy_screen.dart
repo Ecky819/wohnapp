@@ -298,7 +298,7 @@ class _ReadingTile extends StatelessWidget {
             )
           : null,
       trailing: IconButton(
-        icon: const Icon(Icons.delete_outline, size: 18, color: Colors.grey),
+        icon: const Icon(Icons.delete_outlined, size: 18, color: Colors.grey),
         onPressed: () async {
           final confirmed = await showDialog<bool>(
             context: context,
@@ -455,7 +455,7 @@ class _AddReadingSheetState extends ConsumerState<_AddReadingSheet> {
 
               // Wohnung
               buildingsAsync.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
+                loading: () => const LinearProgressIndicator(),
                 error: (e, _) => Text('Fehler: $e'),
                 data: (buildings) {
                   final units = <(String id, String name)>[];
@@ -491,7 +491,7 @@ class _AddReadingSheetState extends ConsumerState<_AddReadingSheet> {
                         _selectedUnitName = match.$2;
                       });
                     },
-                    validator: (v) => v == null ? 'Pflichtfeld' : null,
+                    validator: (v) => v == null ? 'Bitte Wohnung wählen' : null,
                   );
                 },
               ),
@@ -514,7 +514,7 @@ class _AddReadingSheetState extends ConsumerState<_AddReadingSheet> {
                       ),
                       validator: (v) {
                         if (v == null || v.trim().isEmpty) {
-                          return 'Pflichtfeld';
+                          return 'Bitte Zählerstand eingeben';
                         }
                         if (double.tryParse(v.trim().replaceAll(',', '.')) ==
                             null) {

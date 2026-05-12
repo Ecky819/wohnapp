@@ -15,9 +15,28 @@ class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   Future<void> _logout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Abmelden?'),
+        content: const Text('Möchtest du dich wirklich abmelden?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Abmelden'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
-      // Remove FCM token so no notifications reach this device after logout
       await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
@@ -244,13 +263,29 @@ class _SpecializationsEditorState
         const SizedBox(height: 12),
         _saving
             ? const Center(child: CircularProgressIndicator())
-            : OutlinedButton(
-                onPressed: _save,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 20, vertical: 10),
-                ),
-                child: const Text('Speichern'),
+            : Row(
+                children: [
+                  OutlinedButton(
+                    onPressed: () => setState(() {
+                      _selected =
+                          Set<String>.from(widget.user.specializations);
+                    }),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 10),
+                    ),
+                    child: const Text('Zurücksetzen'),
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton(
+                    onPressed: _save,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 10),
+                    ),
+                    child: const Text('Speichern'),
+                  ),
+                ],
               ),
       ],
     );

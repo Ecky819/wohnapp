@@ -675,7 +675,7 @@ class _CsvFormatHint extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ExpansionTile(
-      leading: const Icon(Icons.info_outline, size: 18),
+      leading: const Icon(Icons.info_outlined, size: 18),
       title: Text(title, style: const TextStyle(fontSize: 12)),
       tilePadding: const EdgeInsets.symmetric(horizontal: 16),
       children: [

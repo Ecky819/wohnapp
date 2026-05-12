@@ -30,6 +30,7 @@ import 'features/tickets/ticket_detail_screen.dart';
 import 'features/tickets/ticket_list_screen.dart';
 import 'login_screen.dart';
 import 'models/app_user.dart';
+import 'models/tenant.dart';
 import 'repositories/tenant_repository.dart';
 import 'user_provider.dart';
 
@@ -80,11 +81,10 @@ abstract class AppRoutes {
 
 class _RouterNotifier extends ChangeNotifier {
   _RouterNotifier(this._ref) {
-    // Rebuild GoRouter whenever currentUserProvider changes
-    _ref.listen<AsyncValue<AppUser?>>(
-      currentUserProvider,
-      (_, __) => notifyListeners(),
-    );
+    _ref.listen<AsyncValue<AppUser?>>(currentUserProvider, (_, __) => notifyListeners());
+    // Also rebuild when tenant data arrives so the onboarding redirect fires
+    // as soon as we know whether a tenant doc exists — not just when auth changes.
+    _ref.listen<AsyncValue<Tenant?>>(tenantProvider, (_, __) => notifyListeners());
   }
 
   final Ref _ref;
@@ -95,10 +95,8 @@ class _RouterNotifier extends ChangeNotifier {
     final onLogin = loc == AppRoutes.login;
     final onRegister = loc == AppRoutes.register;
 
-    // Both login and register are public routes
     if (!isLoggedIn) return (onLogin || onRegister) ? null : AppRoutes.login;
 
-    // Still loading — don't redirect yet
     final userAsync = _ref.read(currentUserProvider);
     final onOnboarding = loc == AppRoutes.onboarding;
 
@@ -107,19 +105,18 @@ class _RouterNotifier extends ChangeNotifier {
         if (user == null) return null;
         if (onLogin || onRegister) return _homeForRole(user.role);
 
-        // New manager with no tenant doc → show onboarding wizard
-        if (user.role == 'manager' && !onOnboarding) {
+        if (user.role == 'manager') {
           final tenantAsync = _ref.read(tenantProvider);
-          return tenantAsync.whenOrNull(
-            data: (tenant) => tenant == null ? AppRoutes.onboarding : null,
-          );
-        }
-        // Onboarding done → redirect away
-        if (onOnboarding && user.role == 'manager') {
-          final tenantAsync = _ref.read(tenantProvider);
-          return tenantAsync.whenOrNull(
-            data: (tenant) =>
-                tenant != null ? AppRoutes.manager : null,
+          return tenantAsync.when(
+            // Tenant data still loading → hold position, don't redirect yet.
+            // This prevents a transient null from triggering the onboarding.
+            loading: () => null,
+            error: (_, __) => null,
+            data: (tenant) {
+              if (tenant == null && !onOnboarding) return AppRoutes.onboarding;
+              if (tenant != null && onOnboarding) return AppRoutes.manager;
+              return null;
+            },
           );
         }
         return null;

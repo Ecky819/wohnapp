@@ -7,6 +7,7 @@ import 'package:table_calendar/table_calendar.dart';
 import '../../models/ticket.dart';
 import '../../router.dart';
 import '../../ticket_provider.dart';
+import '../../widgets/app_state_widgets.dart';
 
 class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key});
@@ -43,7 +44,27 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     final ticketsAsync = ref.watch(allTicketsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Wartungskalender')),
+      appBar: AppBar(
+        title: const Text('Wartungskalender'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(28),
+          child: Container(
+            width: double.infinity,
+            color: Colors.orange.withValues(alpha: 0.1),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outlined, size: 13, color: Colors.orange),
+                SizedBox(width: 6),
+                Text(
+                  'Nur Wartungstickets (Kategorie: Wartung)',
+                  style: TextStyle(fontSize: 11, color: Colors.orange),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
       body: ticketsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Fehler: $e')),
@@ -97,6 +118,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                   titleCentered: true,
                 ),
                 calendarStyle: CalendarStyle(
+                  markerSize: 7,
                   markerDecoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.primary,
                     shape: BoxShape.circle,
@@ -126,9 +148,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               const Divider(height: 1),
               Expanded(
                 child: selectedEvents.isEmpty
-                    ? const Center(
-                        child: Text('Keine Wartungstermine',
-                            style: TextStyle(color: Colors.grey)),
+                    ? const EmptyState(
+                        icon: Icons.event_busy_outlined,
+                        title: 'Keine Termine',
+                        subtitle: 'An diesem Tag sind keine Wartungstermine geplant.',
                       )
                     : ListView.builder(
                         itemCount: selectedEvents.length,

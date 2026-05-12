@@ -3,6 +3,7 @@ import * as admin from "firebase-admin";
 import {
   onDocumentCreated,
   onDocumentUpdated,
+  onDocumentWritten,
 } from "firebase-functions/v2/firestore";
 import { onCall, HttpsError, onRequest } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
@@ -15,6 +16,67 @@ const sendgridApiKey = defineSecret("SENDGRID_API_KEY");
 admin.initializeApp();
 
 const db = admin.firestore();
+
+// ─── Custom Claims: syncUserClaims ───────────────────────────────────────────
+// Fires whenever a user document is created or updated.
+// Writes { role, tenantId } as custom JWT claims so Storage/Firestore Rules
+// can use request.auth.token.role instead of a cross-service firestore.get().
+export const syncUserClaims = onDocumentWritten(
+  { document: "users/{uid}", region: "europe-west3" },
+  async (event) => {
+    const uid = event.params.uid;
+    const after = event.data?.after;
+
+    if (!after?.exists) {
+      await admin.auth().setCustomUserClaims(uid, {});
+      logger.info(`Claims cleared for deleted user ${uid}`);
+      return;
+    }
+
+    const data = after.data() as { role?: string; tenantId?: string };
+    const { role, tenantId } = data;
+    if (!role || !tenantId) return;
+
+    try {
+      const userRecord = await admin.auth().getUser(uid);
+      const current = userRecord.customClaims ?? {};
+      if (current["role"] === role && current["tenantId"] === tenantId) return;
+    } catch {
+      // User might not exist in Auth yet during initial write — set anyway
+    }
+
+    await admin.auth().setCustomUserClaims(uid, { role, tenantId });
+    logger.info(`Claims synced for ${uid}: role=${role}, tenantId=${tenantId}`);
+  }
+);
+
+// ─── Custom Claims: refreshMyUserClaims ──────────────────────────────────────
+// Callable by any authenticated user. Sets their own custom claims from
+// their Firestore document and returns so the client can force-refresh the token.
+// Used for existing users who registered before syncUserClaims was deployed.
+export const refreshMyUserClaims = onCall(
+  { region: "europe-west3" },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "Nicht angemeldet.");
+    }
+
+    const uid = request.auth.uid;
+    const doc = await db.collection("users").doc(uid).get();
+    if (!doc.exists) {
+      throw new HttpsError("not-found", "Nutzerdokument nicht gefunden.");
+    }
+
+    const { role, tenantId } = doc.data() as { role?: string; tenantId?: string };
+    if (!role || !tenantId) {
+      throw new HttpsError("failed-precondition", "role oder tenantId fehlt.");
+    }
+
+    await admin.auth().setCustomUserClaims(uid, { role, tenantId });
+    logger.info(`Claims refreshed on request for ${uid}: role=${role}, tenantId=${tenantId}`);
+    return { ok: true };
+  }
+);
 
 // ─── Status-Labels ────────────────────────────────────────────────────────────
 

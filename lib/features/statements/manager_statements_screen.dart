@@ -8,6 +8,7 @@ import '../../models/annual_statement.dart';
 import '../../repositories/annual_statement_repository.dart';
 import '../../router.dart';
 import '../../user_provider.dart';
+import '../../widgets/app_state_widgets.dart';
 
 class ManagerStatementsScreen extends ConsumerWidget {
   const ManagerStatementsScreen({super.key});
@@ -54,17 +55,10 @@ class _StatementsList extends ConsumerWidget {
       error: (e, _) => Center(child: Text('Fehler: $e')),
       data: (stmts) {
         if (stmts.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.description_outlined,
-                    size: 48, color: Colors.grey),
-                SizedBox(height: 12),
-                Text('Noch keine Abrechnungen versandt.',
-                    style: TextStyle(color: Colors.grey)),
-              ],
-            ),
+          return const EmptyState(
+            icon: Icons.description_outlined,
+            title: 'Noch keine Abrechnungen',
+            subtitle: 'Tippe auf „Abrechnung senden" um die erste Jahresabrechnung zu verschicken.',
           );
         }
         return ListView.builder(
