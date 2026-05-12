@@ -1,6 +1,62 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart' show Color, Colors;
 
+// ─── Betriebskostenposition (§2 BetrKV) ──────────────────────────────────────
+
+class NebenkostenPosition {
+  const NebenkostenPosition({
+    required this.bezeichnung,
+    required this.monatlicheVorauszahlung,
+    this.umlageschluessel = 'wohnflaeche',
+  });
+
+  final String bezeichnung;
+  final double monatlicheVorauszahlung;
+  // Umlageschlüssel: 'wohnflaeche' | 'einheit' | 'direkt'
+  final String umlageschluessel;
+
+  factory NebenkostenPosition.fromMap(Map<String, dynamic> m) =>
+      NebenkostenPosition(
+        bezeichnung: m['bezeichnung'] as String? ?? '',
+        monatlicheVorauszahlung:
+            (m['vorauszahlung'] as num?)?.toDouble() ?? 0,
+        umlageschluessel:
+            m['umlageschluessel'] as String? ?? 'wohnflaeche',
+      );
+
+  Map<String, dynamic> toMap() => {
+        'bezeichnung': bezeichnung,
+        'vorauszahlung': monatlicheVorauszahlung,
+        'umlageschluessel': umlageschluessel,
+      };
+
+  String get umlageschluesselLabel => switch (umlageschluessel) {
+        'wohnflaeche' => 'Wohnfläche',
+        'einheit' => 'Pro Einheit',
+        'direkt' => 'Direkt',
+        _ => umlageschluessel,
+      };
+
+  // Standard-Positionen nach §2 BetrKV
+  static const standardPositionen = [
+    'Grundsteuer',
+    'Wasserversorgung',
+    'Entwässerung / Abwasser',
+    'Aufzug',
+    'Straßenreinigung / Müllabfuhr',
+    'Hausreinigung',
+    'Gartenpflege',
+    'Hausbeleuchtung',
+    'Sach- und Haftpflichtversicherung',
+    'Hauswart / Hausmeister',
+    'Gemeinschaftsantenne / Kabelanschluss',
+    'Warmwasser',
+    'Sonstige Betriebskosten',
+  ];
+}
+
+// ─── Mietverhältnis ───────────────────────────────────────────────────────────
+
 class RentalAgreement {
   const RentalAgreement({
     required this.id,
@@ -16,6 +72,10 @@ class RentalAgreement {
     this.endDate,
     this.monthlyRent,
     this.deposit,
+    // Nebenkosten
+    this.nebenkostenPositionen = const [],
+    this.monthlyHeatingAdvance,
+    // Vertrag
     this.contractUrl,
     this.contractFileName,
     required this.status,
@@ -36,6 +96,10 @@ class RentalAgreement {
   final DateTime? endDate;
   final double? monthlyRent;
   final double? deposit;
+  // Betriebskosten-Positionen (§2 BetrKV)
+  final List<NebenkostenPosition> nebenkostenPositionen;
+  // Heizkosten-Vorauszahlung separat (Pflicht nach HeizkostenVO)
+  final double? monthlyHeatingAdvance;
   final String? contractUrl;
   final String? contractFileName;
   final String status; // active | notice_given | ended
@@ -58,10 +122,18 @@ class RentalAgreement {
       endDate: (d['endDate'] as Timestamp?)?.toDate(),
       monthlyRent: (d['monthlyRent'] as num?)?.toDouble(),
       deposit: (d['deposit'] as num?)?.toDouble(),
+      nebenkostenPositionen:
+          (d['nebenkostenPositionen'] as List<dynamic>? ?? [])
+              .map((e) =>
+                  NebenkostenPosition.fromMap(e as Map<String, dynamic>))
+              .toList(),
+      monthlyHeatingAdvance:
+          (d['monthlyHeatingAdvance'] as num?)?.toDouble(),
       contractUrl: d['contractUrl'] as String?,
       contractFileName: d['contractFileName'] as String?,
       status: d['status'] as String? ?? 'active',
-      createdAt: (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt:
+          (d['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       notes: d['notes'] as String?,
     );
   }
@@ -79,12 +151,30 @@ class RentalAgreement {
         if (endDate != null) 'endDate': Timestamp.fromDate(endDate!),
         if (monthlyRent != null) 'monthlyRent': monthlyRent,
         if (deposit != null) 'deposit': deposit,
+        if (nebenkostenPositionen.isNotEmpty)
+          'nebenkostenPositionen':
+              nebenkostenPositionen.map((p) => p.toMap()).toList(),
+        if (monthlyHeatingAdvance != null)
+          'monthlyHeatingAdvance': monthlyHeatingAdvance,
         if (contractUrl != null) 'contractUrl': contractUrl,
         if (contractFileName != null) 'contractFileName': contractFileName,
         'status': status,
         'createdAt': FieldValue.serverTimestamp(),
         if (notes != null && notes!.isNotEmpty) 'notes': notes,
       };
+
+  // Gesamte monatliche Betriebskosten-Vorauszahlung (ohne Heizung)
+  double get monthlyUtilityTotal =>
+      nebenkostenPositionen.fold(0.0, (s, p) => s + p.monatlicheVorauszahlung);
+
+  // Warmmiete = Kaltmiete + NK + HK
+  double get monthlyWarmRent =>
+      (monthlyRent ?? 0) +
+      monthlyUtilityTotal +
+      (monthlyHeatingAdvance ?? 0);
+
+  bool get hasUtilityCosts =>
+      nebenkostenPositionen.isNotEmpty || monthlyHeatingAdvance != null;
 
   String get statusLabel => switch (status) {
         'active' => 'Aktiv',

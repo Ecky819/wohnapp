@@ -225,6 +225,101 @@ class _RentalAgreementDetailScreenState
           ]),
           const SizedBox(height: 12),
 
+          // ── Nebenkosten ──────────────────────────────────────────────
+          if (agreement.hasUtilityCosts)
+            _DetailCard(title: 'Nebenkosten', children: [
+              if (agreement.monthlyHeatingAdvance != null)
+                _InfoRow(
+                  icon: Icons.local_fire_department_outlined,
+                  label: 'Heizkosten',
+                  value:
+                      '${nf.format(agreement.monthlyHeatingAdvance!)}/Monat',
+                ),
+              if (agreement.nebenkostenPositionen.isNotEmpty) ...[
+                if (agreement.monthlyHeatingAdvance != null)
+                  const SizedBox(height: 4),
+                const Text(
+                  'Betriebskosten (§2 BetrKV)',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey),
+                ),
+                const SizedBox(height: 6),
+                ...agreement.nebenkostenPositionen.map((p) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 3),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.circle,
+                              size: 6, color: Colors.grey),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(p.bezeichnung,
+                                style: const TextStyle(fontSize: 13)),
+                          ),
+                          Text(
+                            '${nf.format(p.monatlicheVorauszahlung)}/Monat',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              p.umlageschluesselLabel,
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.grey.shade600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )),
+              ],
+              if (agreement.nebenkostenPositionen.isNotEmpty) ...[
+                const Divider(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Betriebskosten gesamt',
+                        style: TextStyle(fontSize: 13)),
+                    Text(
+                      '${nf.format(agreement.monthlyUtilityTotal)}/Monat',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w500),
+                    ),
+                  ],
+                ),
+              ],
+              const Divider(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Warmmiete',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  Text(
+                    '${nf.format(agreement.monthlyWarmRent)}/Monat',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ]),
+          if (agreement.hasUtilityCosts) const SizedBox(height: 12),
+
           // ── Mietvertrag ──────────────────────────────────────────────
           _DetailCard(title: 'Mietvertrag', children: [
             if (agreement.hasContract) ...[
