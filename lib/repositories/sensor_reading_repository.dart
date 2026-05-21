@@ -22,6 +22,30 @@ class SensorReadingRepository {
             s.docs.map(SensorReading.fromDoc).toList()));
   }
 
+  /// Neueste 2 Messungen pro Sensor-Typ (für Trend-Berechnung).
+  Stream<List<SensorReading>> watchLatest2ByUnit(String unitId) {
+    return _col
+        .where('unitId', isEqualTo: unitId)
+        .orderBy('timestamp', descending: true)
+        .limit(100)
+        .snapshots()
+        .map((s) => _keepTop2ByType(s.docs.map(SensorReading.fromDoc).toList()));
+  }
+
+  List<SensorReading> _keepTop2ByType(List<SensorReading> readings) {
+    final counts = <String, int>{};
+    final result = <SensorReading>[];
+    for (final r in readings) {
+      final key = '${r.sensorType.firestoreValue}_${r.deviceId ?? r.unitId}';
+      final n = counts[key] ?? 0;
+      if (n < 2) {
+        counts[key] = n + 1;
+        result.add(r);
+      }
+    }
+    return result;
+  }
+
   /// Alle Messungen eines Geräts für einen Sensor-Typ (Verlauf).
   Stream<List<SensorReading>> watchHistory(
       String deviceId, SensorType type) {

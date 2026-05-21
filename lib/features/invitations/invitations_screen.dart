@@ -10,7 +10,9 @@ import '../../models/unit.dart';
 import '../../repositories/building_repository.dart';
 import '../../repositories/invitation_repository.dart';
 import '../../repositories/tenant_repository.dart';
+import '../../services/rate_limiter.dart';
 import '../../user_provider.dart';
+import '../../utils/app_exception.dart';
 import '../../widgets/app_state_widgets.dart';
 
 final _invitationsStreamProvider = StreamProvider<List<Invitation>>((ref) {
@@ -162,10 +164,8 @@ class _InvitationCard extends ConsumerWidget {
                     fontSize: 18)),
             const SizedBox(width: 4),
             IconButton(
-              icon: const Icon(Icons.copy, size: 16),
+              icon: const Icon(Icons.copy, size: 18),
               tooltip: 'Kopieren',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: inv.code));
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -174,10 +174,8 @@ class _InvitationCard extends ConsumerWidget {
               },
             ),
             IconButton(
-              icon: const Icon(Icons.qr_code, size: 16),
+              icon: const Icon(Icons.qr_code, size: 18),
               tooltip: 'QR-Code anzeigen',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
               onPressed: () => _showQrDialog(context, ref),
             ),
           ],
@@ -255,8 +253,13 @@ class _CreateInvitationSheetState
 
   Future<void> _create() async {
     setState(() => _isLoading = true);
+    HapticFeedback.lightImpact();
     try {
       final user = ref.read(currentUserProvider).valueOrNull;
+      RateLimiter.instance.checkOrThrow(
+        'create_invitation_${user?.uid}',
+        cooldown: const Duration(seconds: 10),
+      );
       final tenantId = user?.tenantId ?? 'tenant_1';
 
       final code = await ref.read(invitationRepositoryProvider).create(
@@ -278,6 +281,12 @@ class _CreateInvitationSheetState
         _generatedCode = code;
         _generatedUrl = '$base?code=$code';
       });
+    } on AppException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -86,6 +87,18 @@ class TicketDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Ticket-Details'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.share_outlined),
+            tooltip: 'Link kopieren',
+            onPressed: () {
+              const base = 'https://wohnapp-mvp.web.app';
+              final url = '$base/ticket/${ref.read(currentUserProvider).valueOrNull?.tenantId ?? ""}#${ticketAsync.valueOrNull?.id ?? ""}';
+              Clipboard.setData(ClipboardData(text: url));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Ticket-Link kopiert')),
+              );
+            },
+          ),
           if (canEdit && ticket != null)
             IconButton(
               icon: const Icon(Icons.edit_outlined),
@@ -802,20 +815,75 @@ class _InfoRow extends StatelessWidget {
 
 // ─── Activity log ────────────────────────────────────────────────────────────
 
-class _ActivityLog extends ConsumerWidget {
+class _ActivityLog extends ConsumerStatefulWidget {
   const _ActivityLog({required this.ticketId});
   final String ticketId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final activityAsync = ref.watch(activityProvider(ticketId));
-    final dateFormat = DateFormat('dd.MM. HH:mm');
+  ConsumerState<_ActivityLog> createState() => _ActivityLogState();
+}
+
+class _ActivityLogState extends ConsumerState<_ActivityLog> {
+  // null = Alle
+  ActivityType? _filter;
+
+  static final _dayFmt = DateFormat('dd. MMMM yyyy', 'de');
+  static final _timeFmt = DateFormat('HH:mm');
+
+  static IconData _icon(ActivityType t) => switch (t) {
+        ActivityType.created => Icons.add_circle_outline,
+        ActivityType.statusChanged => Icons.swap_horiz,
+        ActivityType.assigned => Icons.person_outlined,
+        ActivityType.updated => Icons.edit_outlined,
+      };
+
+  static String _filterLabel(ActivityType? t) => switch (t) {
+        null => 'Alle',
+        ActivityType.created => 'Erstellt',
+        ActivityType.statusChanged => 'Status',
+        ActivityType.assigned => 'Zuweisung',
+        ActivityType.updated => 'Aktualisiert',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final activityAsync = ref.watch(activityProvider(widget.ticketId));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Aktivität',
-            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+        Row(
+          children: [
+            const Text('Aktivität',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+            const Spacer(),
+            // Filter-Chip
+            PopupMenuButton<ActivityType?>(
+              initialValue: _filter,
+              onSelected: (v) => setState(() => _filter = v),
+              tooltip: 'Filter',
+              child: Chip(
+                label: Text(_filterLabel(_filter),
+                    style: const TextStyle(fontSize: 12)),
+                avatar: const Icon(Icons.filter_list, size: 14),
+                visualDensity: VisualDensity.compact,
+              ),
+              itemBuilder: (_) => [
+                for (final opt in [
+                  null,
+                  ActivityType.statusChanged,
+                  ActivityType.assigned,
+                  ActivityType.updated,
+                  ActivityType.created,
+                ])
+                  PopupMenuItem(
+                    value: opt,
+                    child: Text(_filterLabel(opt)),
+                  ),
+              ],
+            ),
+          ],
+        ),
         const SizedBox(height: 8),
         activityAsync.when(
           loading: () => const SizedBox(
@@ -824,69 +892,94 @@ class _ActivityLog extends ConsumerWidget {
           ),
           error: (e, _) =>
               Text('Fehler: $e', style: const TextStyle(color: Colors.red)),
-          data: (entries) {
+          data: (all) {
+            final entries = _filter == null
+                ? all
+                : all.where((e) => e.type == _filter).toList();
+
             if (entries.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('Keine Aktivitäten.',
-                    style: TextStyle(color: Colors.grey)),
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  _filter == null
+                      ? 'Keine Aktivitäten.'
+                      : 'Keine Einträge für diesen Filter.',
+                  style: const TextStyle(color: Colors.grey),
+                ),
               );
             }
+
+            // Gruppierung nach Datum
+            final groups = <String, List<ActivityEntry>>{};
+            for (final e in entries) {
+              final day = e.createdAt != null
+                  ? _dayFmt.format(e.createdAt!)
+                  : 'Unbekannt';
+              groups.putIfAbsent(day, () => []).add(e);
+            }
+
             return Column(
-              children: entries.map((e) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Icon(_activityIcon(e.type),
-                          size: 16, color: Colors.grey),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: RichText(
-                          text: TextSpan(
-                            style: const TextStyle(
-                                fontSize: 13, color: Colors.black87),
-                            children: [
-                              TextSpan(
-                                  text: '${e.actorName}: ',
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w600)),
-                              TextSpan(text: e.detail),
-                            ],
-                          ),
-                        ),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final day in groups.keys) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10, bottom: 4),
+                    child: Text(
+                      day,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.primary,
+                        letterSpacing: 0.4,
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        e.createdAt != null
-                            ? dateFormat.format(e.createdAt!)
-                            : '',
-                        style: const TextStyle(
-                            fontSize: 11, color: Colors.grey),
-                      ),
-                    ],
+                    ),
                   ),
-                );
-              }).toList(),
+                  for (final e in groups[day]!)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(_icon(e.type), size: 17, color: Colors.grey),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: RichText(
+                              text: TextSpan(
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    color: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.color),
+                                children: [
+                                  TextSpan(
+                                    text: '${e.actorName}: ',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                  TextSpan(text: e.detail),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            e.createdAt != null
+                                ? _timeFmt.format(e.createdAt!)
+                                : '',
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ],
             );
           },
         ),
       ],
     );
-  }
-
-  IconData _activityIcon(ActivityType type) {
-    switch (type) {
-      case ActivityType.created:
-        return Icons.add_circle_outline;
-      case ActivityType.statusChanged:
-        return Icons.swap_horiz;
-      case ActivityType.assigned:
-        return Icons.person_outlined;
-      case ActivityType.updated:
-        return Icons.edit_outlined;
-    }
   }
 }
 

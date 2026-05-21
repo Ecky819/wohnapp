@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
@@ -63,6 +64,36 @@ class BulkImportScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+// ─── Gemeinsamer Bestätigungsdialog vor jedem Import ─────────────────────────
+
+Future<bool> _confirmImport(
+  BuildContext context, {
+  required int count,
+  required String label,
+}) async {
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (_) => AlertDialog(
+      title: const Text('Import bestätigen'),
+      content: Text(
+        '$count $label werden importiert. '
+        'Dieser Vorgang kann nicht rückgängig gemacht werden.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Abbrechen'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Importieren'),
+        ),
+      ],
+    ),
+  );
+  return result == true;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -146,6 +177,14 @@ class _UnitsImportTabState extends ConsumerState<_UnitsImportTab> {
     final tenantId =
         ref.read(currentUserProvider).valueOrNull?.tenantId ?? '';
     if (tenantId.isEmpty) return;
+
+    final buildingCount = rows.map((r) => r.buildingName).toSet().length;
+    final confirmed = await _confirmImport(
+      context,
+      count: rows.length,
+      label: 'Wohnungen in $buildingCount Gebäude(n)',
+    );
+    if (!confirmed) return;
 
     // Group rows by building name → deduplicate buildings
     final buildingMap = <String, _BuildingAccumulator>{};
@@ -338,15 +377,22 @@ class _UnitRow {
   final int? buildYear;  // Baujahr
 
   factory _UnitRow.fromCsvRow(List<dynamic> r) {
+    final area = r.length > 4 ? _parseDouble(r[4].toString()) : null;
+    final year = r.length > 6 ? int.tryParse(r[6].toString().trim()) : null;
     return _UnitRow(
-      buildingName: r[0].toString().trim(),
-      buildingAddress: r.length > 1 ? r[1].toString().trim() : '',
-      unitName: r[2].toString().trim(),
+      buildingName: _clip(r[0].toString(), 100),
+      buildingAddress: r.length > 1 ? _clip(r[1].toString(), 200) : '',
+      unitName: r.length > 2 ? _clip(r[2].toString(), 100) : '',
       floor: r.length > 3 ? _parseFloor(r[3].toString()) : null,
-      area: r.length > 4 ? _parseDouble(r[4].toString()) : null,
+      area: (area != null && area > 0) ? area : null,
       rooms: r.length > 5 ? int.tryParse(r[5].toString().trim()) : null,
-      buildYear: r.length > 6 ? int.tryParse(r[6].toString().trim()) : null,
+      buildYear: (year != null && year >= 1800 && year <= 2100) ? year : null,
     );
+  }
+
+  static String _clip(String s, int max) {
+    final t = s.trim();
+    return t.length <= max ? t : t.substring(0, max);
   }
 
   static int? _parseFloor(String s) {
@@ -450,6 +496,7 @@ class _AgreementsImportTabState
   int _done = 0;
   int _total = 0;
   final _importErrors = <String>[];
+  final _failedRows  = <_AgreementRow>[];
 
   Future<void> _pickFile() async {
     setState(() {
@@ -458,6 +505,7 @@ class _AgreementsImportTabState
       _done = 0;
       _total = 0;
       _importErrors.clear();
+      _failedRows.clear();
     });
 
     final result = await FilePicker.platform.pickFiles(
@@ -508,11 +556,19 @@ class _AgreementsImportTabState
         ref.read(currentUserProvider).valueOrNull?.tenantId ?? '';
     if (tenantId.isEmpty) return;
 
+    final confirmed = await _confirmImport(
+      context,
+      count: rows.length,
+      label: 'Mietverhältnisse',
+    );
+    if (!confirmed) return;
+
     setState(() {
       _importing = true;
       _done = 0;
       _total = rows.length;
       _importErrors.clear();
+      _failedRows.clear();
     });
 
     try {
@@ -543,6 +599,7 @@ class _AgreementsImportTabState
             buildingByName[row.buildingName.toLowerCase().trim()];
         if (building == null) {
           errors.add('Gebäude nicht gefunden: "${row.buildingName}"');
+          _failedRows.add(row);
           continue;
         }
 
@@ -556,6 +613,7 @@ class _AgreementsImportTabState
         if (unit == null) {
           errors.add(
               'Wohnung nicht gefunden: "${row.unitName}" in "${row.buildingName}"');
+          _failedRows.add(row);
           continue;
         }
 
@@ -608,6 +666,33 @@ class _AgreementsImportTabState
     }
   }
 
+  void _exportFailedRows() {
+    if (_failedRows.isEmpty) return;
+    final df = DateFormat('dd.MM.yyyy');
+    final buf = StringBuffer(
+        'Name;E-Mail;Gebäude;Wohnung;Mietbeginn;Mietende;Kaltmiete;Kaution\n');
+    for (final r in _failedRows) {
+      buf.writeln([
+        r.name,
+        r.email,
+        r.buildingName,
+        r.unitName,
+        r.startDate != null ? df.format(r.startDate!) : '',
+        r.endDate   != null ? df.format(r.endDate!)   : '',
+        r.monthlyRent?.toStringAsFixed(2) ?? '',
+        r.deposit?.toStringAsFixed(2)     ?? '',
+      ].join(';'));
+    }
+    Clipboard.setData(ClipboardData(text: buf.toString()));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(
+                '${_failedRows.length} fehlerhafte Zeile(n) in Zwischenablage kopiert')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final rows = _rows;
@@ -620,21 +705,40 @@ class _AgreementsImportTabState
         ),
         if (_error != null) _ErrorBanner(message: _error!),
         if (_importErrors.isNotEmpty)
-          Container(
-            color: Colors.orange.shade50,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('${_importErrors.length} Zeilen übersprungen:',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 13)),
-                const SizedBox(height: 4),
-                ..._importErrors.map((e) => Text(e,
-                    style: const TextStyle(
-                        fontSize: 11, color: Colors.orange))),
-              ],
+          Builder(
+            builder: (context) => Container(
+              color: Color.alphaBlend(
+                Colors.orange.withValues(alpha: 0.1),
+                Theme.of(context).colorScheme.surface,
+              ),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${_importErrors.length} Zeilen übersprungen:',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                      ),
+                      TextButton.icon(
+                        icon: const Icon(Icons.copy_outlined, size: 14),
+                        label: const Text('CSV kopieren',
+                            style: TextStyle(fontSize: 12)),
+                        onPressed: _exportFailedRows,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  ..._importErrors.map((e) => Text(e,
+                      style: const TextStyle(
+                          fontSize: 11, color: Colors.orange))),
+                ],
+              ),
             ),
           ),
         if (rows != null) ...[
@@ -740,16 +844,23 @@ class _AgreementRow {
   final double? deposit;
 
   factory _AgreementRow.fromCsvRow(List<dynamic> r) {
+    final rent = r.length > 6 ? _parseDouble(r[6].toString()) : null;
+    final dep  = r.length > 7 ? _parseDouble(r[7].toString()) : null;
     return _AgreementRow(
-      name: r[0].toString().trim(),
-      email: r.length > 1 ? r[1].toString().trim() : '',
-      buildingName: r.length > 2 ? r[2].toString().trim() : '',
-      unitName: r.length > 3 ? r[3].toString().trim() : '',
-      startDate: r.length > 4 ? _parseDate(r[4].toString()) : null,
-      endDate: r.length > 5 ? _parseDate(r[5].toString()) : null,
-      monthlyRent: r.length > 6 ? _parseDouble(r[6].toString()) : null,
-      deposit: r.length > 7 ? _parseDouble(r[7].toString()) : null,
+      name:         _clip(r[0].toString(), 200),
+      email:        r.length > 1 ? _clip(r[1].toString(), 200) : '',
+      buildingName: r.length > 2 ? _clip(r[2].toString(), 100) : '',
+      unitName:     r.length > 3 ? _clip(r[3].toString(), 100) : '',
+      startDate:    r.length > 4 ? _parseDate(r[4].toString()) : null,
+      endDate:      r.length > 5 ? _parseDate(r[5].toString()) : null,
+      monthlyRent:  (rent != null && rent > 0) ? rent : null,
+      deposit:      (dep  != null && dep  > 0) ? dep  : null,
     );
+  }
+
+  static String _clip(String s, int max) {
+    final t = s.trim();
+    return t.length <= max ? t : t.substring(0, max);
   }
 
   static final _df = DateFormat('dd.MM.yyyy');
@@ -844,6 +955,13 @@ class _InvitesImportTabState extends ConsumerState<_InvitesImportTab> {
     final tenantId =
         ref.read(currentUserProvider).valueOrNull?.tenantId ?? '';
     if (tenantId.isEmpty) return;
+
+    final confirmed = await _confirmImport(
+      context,
+      count: rows.length,
+      label: 'Einladungen',
+    );
+    if (!confirmed) return;
 
     setState(() {
       _importing = true;
@@ -1143,7 +1261,10 @@ class _ErrorBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.red.shade50,
+      color: Color.alphaBlend(
+        Colors.red.withValues(alpha: 0.1),
+        Theme.of(context).colorScheme.surface,
+      ),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [

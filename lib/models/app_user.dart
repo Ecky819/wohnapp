@@ -1,3 +1,4 @@
+import 'app_enums.dart';
 import 'notification_preferences.dart';
 
 class AppUser {
@@ -46,6 +47,8 @@ class AppUser {
         'specializations': specializations,
         if (unitId != null) 'unitId': unitId,
       };
+
+  UserRole get roleEnum => UserRole.fromString(role);
 
   String get roleLabel {
     switch (role) {

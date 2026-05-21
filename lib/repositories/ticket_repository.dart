@@ -10,8 +10,11 @@ import '../models/activity_entry.dart';
 import '../models/insurance_claim.dart';
 import '../models/ticket.dart';
 import '../services/notification_service.dart';
+import '../services/rate_limiter.dart';
 import '../services/upload_retry_service.dart';
+import '../utils/app_exception.dart';
 import 'activity_repository.dart';
+
 
 class TicketRepository {
   TicketRepository(this._firestore, this._storage);
@@ -83,8 +86,11 @@ class TicketRepository {
     int limit = 20,
     DocumentSnapshot? startAfter,
   }) async {
+    // archived-Filter in Firestore, nicht in Dart — verhindert Pagination-Bug
+    // bei dem gefilterte Docs die Page unter das Limit drücken.
     Query<Map<String, dynamic>> q = _tickets
         .where('assignedTo', isEqualTo: uid)
+        .where('archived', isEqualTo: false)
         .orderBy('createdAt', descending: true)
         .limit(limit + 1);
 
@@ -96,12 +102,8 @@ class TicketRepository {
     final snap = await q.get();
     final hasMore = snap.docs.length > limit;
     final docs = hasMore ? snap.docs.sublist(0, limit) : snap.docs;
-    final tickets = docs
-        .map(Ticket.fromDoc)
-        .where((t) => !t.archived)
-        .toList();
     return (
-      tickets: tickets,
+      tickets: docs.map(Ticket.fromDoc).toList(),
       lastDoc: docs.isNotEmpty ? docs.last : null,
       hasMore: hasMore,
     );
@@ -172,45 +174,61 @@ class TicketRepository {
     /// Override the creator UID — used for anonymous guest reports.
     String? guestUid,
   }) async {
-    final uid = guestUid ?? FirebaseAuth.instance.currentUser!.uid;
-    final ref = _tickets.doc();
+    try {
+      final uid = guestUid ?? FirebaseAuth.instance.currentUser!.uid;
+      RateLimiter.instance.checkOrThrow('create_ticket_$uid',
+          cooldown: const Duration(seconds: 10));
+      final ref = _tickets.doc();
 
-    await ref.set({
-      'title': title,
-      'description': description,
-      'status': 'open',
-      'priority': priority,
-      'category': category,
-      'tenantId': tenantId,
-      'createdBy': uid,
-      'createdAt': FieldValue.serverTimestamp(),
-      if (unitId != null) 'unitId': unitId,
-      if (unitName != null) 'unitName': unitName,
-      if (scheduledAt != null) 'scheduledAt': Timestamp.fromDate(scheduledAt),
-      if (insuranceClaim != null) 'insuranceClaim': insuranceClaim.toMap(),
-    });
+      await ref.set({
+        'title': title.trim().substring(0, title.trim().length.clamp(0, 500)),
+        'description': description.trim().substring(
+            0, description.trim().length.clamp(0, 5000)),
+        'status': 'open',
+        'priority': priority,
+        'category': category,
+        'tenantId': tenantId,
+        'createdBy': uid,
+        'createdAt': FieldValue.serverTimestamp(),
+        if (unitId != null) 'unitId': unitId,
+        if (unitName != null) 'unitName': unitName,
+        if (scheduledAt != null)
+          'scheduledAt': Timestamp.fromDate(scheduledAt),
+        if (insuranceClaim != null) 'insuranceClaim': insuranceClaim.toMap(),
+      });
 
-    // Upload all images (merges legacy single `image` param with `images` list)
-    final allImages = [if (image != null) image, ...images];
-    if (allImages.isNotEmpty) {
-      final urls = await _uploadImages(uid, ref.id, allImages);
-      await ref.update({'imageUrls': urls, 'imageUrl': urls.first});
+      // Upload all images (merges legacy single `image` param with `images` list)
+      final allImages = [if (image != null) image, ...images];
+      if (allImages.isNotEmpty) {
+        final urls = await _uploadImages(uid, ref.id, allImages);
+        await ref.update({'imageUrls': urls, 'imageUrl': urls.first});
+      }
+
+      if (documents.isNotEmpty) {
+        final docs = await _uploadDocuments(uid, ref.id, documents);
+        await ref.update({'documents': docs});
+      }
+
+      if (activityRepo != null) {
+        await activityRepo.log(
+          ticketId: ref.id,
+          type: ActivityType.created,
+          detail: 'Ticket erstellt',
+        );
+      }
+
+      return ref.id;
+    } on RateLimitException {
+      rethrow;
+    } on FirebaseException catch (e) {
+      // Reset limiter so the user can immediately retry after a server error.
+      final uid = guestUid ?? FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) RateLimiter.instance.reset('create_ticket_$uid');
+      throw AppException.fromFirestore(e);
+    } on UploadException catch (e) {
+      throw AppException(
+          'Bilder konnten nicht hochgeladen werden (${e.attempts} Versuche).');
     }
-
-    if (documents.isNotEmpty) {
-      final docs = await _uploadDocuments(uid, ref.id, documents);
-      await ref.update({'documents': docs});
-    }
-
-    if (activityRepo != null) {
-      await activityRepo.log(
-        ticketId: ref.id,
-        type: ActivityType.created,
-        detail: 'Ticket erstellt',
-      );
-    }
-
-    return ref.id;
   }
 
   Future<void> updateTicket(
@@ -222,21 +240,26 @@ class TicketRepository {
     DateTime? scheduledAt,
     ActivityRepository? activityRepo,
   }) async {
-    await _tickets.doc(ticketId).update({
-      'title': title,
-      'description': description,
-      'priority': priority,
-      'category': category,
-      'scheduledAt': scheduledAt != null
-          ? Timestamp.fromDate(scheduledAt)
-          : FieldValue.delete(),
-    });
-    if (activityRepo != null) {
-      await activityRepo.log(
-        ticketId: ticketId,
-        type: ActivityType.updated,
-        detail: 'Ticket bearbeitet',
-      );
+    try {
+      await _tickets.doc(ticketId).update({
+        'title': title,
+        'description': description,
+        'priority': priority,
+        'category': category,
+        'scheduledAt': scheduledAt != null
+            ? Timestamp.fromDate(scheduledAt)
+            : FieldValue.delete(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      if (activityRepo != null) {
+        await activityRepo.log(
+          ticketId: ticketId,
+          type: ActivityType.updated,
+          detail: 'Ticket bearbeitet',
+        );
+      }
+    } on FirebaseException catch (e) {
+      throw AppException.fromFirestore(e);
     }
   }
 
@@ -245,19 +268,43 @@ class TicketRepository {
     String status, {
     String? oldStatus,
     ActivityRepository? activityRepo,
+    /// Bekannte Version des Tickets (aus Ticket.updatedAt). Wenn gesetzt und
+    /// der Server hat eine neuere Version, wird ConflictException geworfen.
+    DateTime? expectedUpdatedAt,
   }) async {
-    await _tickets.doc(ticketId).update({
-      'status': status,
-      if (status == 'done') 'closedAt': FieldValue.serverTimestamp(),
-    });
-    if (activityRepo != null) {
-      final label = _statusLabel(status);
-      final oldLabel = oldStatus != null ? _statusLabel(oldStatus) : null;
-      await activityRepo.log(
-        ticketId: ticketId,
-        type: ActivityType.statusChanged,
-        detail: oldLabel != null ? '$oldLabel → $label' : label,
-      );
+    try {
+      final ref = _tickets.doc(ticketId);
+
+      await _firestore.runTransaction((tx) async {
+        if (expectedUpdatedAt != null) {
+          final doc = await tx.get(ref);
+          final serverTs =
+              (doc.data()?['updatedAt'] as Timestamp?)?.toDate();
+          if (serverTs != null &&
+              serverTs.isAfter(expectedUpdatedAt.add(const Duration(seconds: 1)))) {
+            throw const ConflictException();
+          }
+        }
+        tx.update(ref, {
+          'status': status,
+          'updatedAt': FieldValue.serverTimestamp(),
+          if (status == 'done') 'closedAt': FieldValue.serverTimestamp(),
+        });
+      });
+
+      if (activityRepo != null) {
+        final label = _statusLabel(status);
+        final oldLabel = oldStatus != null ? _statusLabel(oldStatus) : null;
+        await activityRepo.log(
+          ticketId: ticketId,
+          type: ActivityType.statusChanged,
+          detail: oldLabel != null ? '$oldLabel → $label' : label,
+        );
+      }
+    } on ConflictException {
+      rethrow;
+    } on FirebaseException catch (e) {
+      throw AppException.fromFirestore(e);
     }
   }
 
@@ -325,6 +372,7 @@ class TicketRepository {
     await _tickets.doc(ticketId).update({
       'assignedTo': contractorId,
       'assignedToName': contractorName,
+      'updatedAt': FieldValue.serverTimestamp(),
     });
 
     // Push notification to contractor

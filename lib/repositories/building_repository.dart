@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/building.dart';
 import '../models/unit.dart';
 import '../user_provider.dart';
+import '../utils/app_exception.dart';
 
 // ─── Import data classes ──────────────────────────────────────────────────────
 
@@ -83,9 +84,13 @@ class BuildingRepository {
     required String address,
     required String tenantId,
   }) async {
-    final ref = _buildings.doc();
-    await ref.set({'name': name, 'address': address, 'tenantId': tenantId});
-    return ref.id;
+    try {
+      final ref = _buildings.doc();
+      await ref.set({'name': name, 'address': address, 'tenantId': tenantId});
+      return ref.id;
+    } on FirebaseException catch (e) {
+      throw AppException.fromFirestore(e);
+    }
   }
 
   Future<String> createUnit({
@@ -97,17 +102,21 @@ class BuildingRepository {
     int? rooms,
     int? buildYear,
   }) async {
-    final ref = _units.doc();
-    await ref.set({
-      'buildingId': buildingId,
-      'name': name,
-      'tenantId': tenantId,
-      if (floor != null) 'floor': floor,
-      if (area != null) 'area': area,
-      if (rooms != null) 'rooms': rooms,
-      if (buildYear != null) 'buildYear': buildYear,
-    });
-    return ref.id;
+    try {
+      final ref = _units.doc();
+      await ref.set({
+        'buildingId': buildingId,
+        'name': name,
+        'tenantId': tenantId,
+        if (floor != null) 'floor': floor,
+        if (area != null) 'area': area,
+        if (rooms != null) 'rooms': rooms,
+        if (buildYear != null) 'buildYear': buildYear,
+      });
+      return ref.id;
+    } on FirebaseException catch (e) {
+      throw AppException.fromFirestore(e);
+    }
   }
 
   // ── Batch import ───────────────────────────────────────────────────────────
@@ -140,43 +149,47 @@ class BuildingRepository {
             }))
         .toList();
 
-    for (var i = 0; i < buildingPayloads.length; i += _chunkSize) {
-      final chunk = buildingPayloads.sublist(
-          i, min(i + _chunkSize, buildingPayloads.length));
-      final batch = _firestore.batch();
-      for (final entry in chunk) {
-        batch.set(entry.key, entry.value);
+    try {
+      for (var i = 0; i < buildingPayloads.length; i += _chunkSize) {
+        final chunk = buildingPayloads.sublist(
+            i, min(i + _chunkSize, buildingPayloads.length));
+        final batch = _firestore.batch();
+        for (final entry in chunk) {
+          batch.set(entry.key, entry.value);
+        }
+        await batch.commit();
+        done += chunk.length;
+        onProgress?.call(done, totalOps);
       }
-      await batch.commit();
-      done += chunk.length;
-      onProgress?.call(done, totalOps);
-    }
 
-    // Phase 2 — units (reference the pre-generated building IDs)
-    final unitPayloads = <Map<String, dynamic>>[
-      for (final b in buildings)
-        for (final u in b.units)
-          {
-            'buildingId': buildingRefs[b.key]!.id,
-            'name': u.name,
-            'tenantId': tenantId,
-            if (u.floor != null) 'floor': u.floor,
-            if (u.area != null) 'area': u.area,
-            if (u.rooms != null) 'rooms': u.rooms,
-            if (u.buildYear != null) 'buildYear': u.buildYear,
-          },
-    ];
+      // Phase 2 — units (reference the pre-generated building IDs)
+      final unitPayloads = <Map<String, dynamic>>[
+        for (final b in buildings)
+          for (final u in b.units)
+            {
+              'buildingId': buildingRefs[b.key]!.id,
+              'name': u.name,
+              'tenantId': tenantId,
+              if (u.floor != null) 'floor': u.floor,
+              if (u.area != null) 'area': u.area,
+              if (u.rooms != null) 'rooms': u.rooms,
+              if (u.buildYear != null) 'buildYear': u.buildYear,
+            },
+      ];
 
-    for (var i = 0; i < unitPayloads.length; i += _chunkSize) {
-      final chunk =
-          unitPayloads.sublist(i, min(i + _chunkSize, unitPayloads.length));
-      final batch = _firestore.batch();
-      for (final data in chunk) {
-        batch.set(_units.doc(), data);
+      for (var i = 0; i < unitPayloads.length; i += _chunkSize) {
+        final chunk =
+            unitPayloads.sublist(i, min(i + _chunkSize, unitPayloads.length));
+        final batch = _firestore.batch();
+        for (final data in chunk) {
+          batch.set(_units.doc(), data);
+        }
+        await batch.commit();
+        done += chunk.length;
+        onProgress?.call(done, totalOps);
       }
-      await batch.commit();
-      done += chunk.length;
-      onProgress?.call(done, totalOps);
+    } on FirebaseException catch (e) {
+      throw AppException.fromFirestore(e);
     }
 
     return totalUnits;

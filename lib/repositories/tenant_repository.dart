@@ -48,5 +48,5 @@ final tenantRepositoryProvider = Provider<TenantRepository>(
 final tenantProvider = StreamProvider<Tenant?>((ref) {
   final tenantId = ref.watch(currentUserProvider).valueOrNull?.tenantId ?? '';
   if (tenantId.isEmpty) return Stream.value(null);
-  return ref.read(tenantRepositoryProvider).watchTenant(tenantId);
+  return ref.watch(tenantRepositoryProvider).watchTenant(tenantId);
 });

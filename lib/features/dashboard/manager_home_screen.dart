@@ -15,7 +15,9 @@ import '../../repositories/ticket_repository.dart';
 import '../../router.dart';
 import '../../ticket_provider.dart';
 import '../../user_provider.dart';
+import '../../services/onboarding_service.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../../widgets/onboarding_tooltip.dart';
 import '../../widgets/tenant_logo.dart';
 
 const _kPageSize = 20;
@@ -139,25 +141,30 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: _searchActive ? _buildSearchBar() : _buildNormalAppBar(),
+      drawer: _searchActive ? null : const _AppDrawer(),
       floatingActionButton: _searchActive
           ? null
-          : FloatingActionButton.extended(
-              icon: const Icon(Icons.add),
-              label: const Text('Ticket anlegen'),
-              onPressed: () =>
-                  context
-                      .push('/manager/${AppRoutes.managerCreateTicket}')
-                      .then((created) {
-                    if (created == true && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Ticket erfolgreich angelegt'),
-                          duration: Duration(seconds: 3),
-                        ),
-                      );
-                      _refresh();
-                    }
-                  }),
+          : OnboardingTooltip(
+              hintKey: OnboardingKeys.managerCreateTicketFab,
+              message: 'Tippe hier, um dein erstes Ticket anzulegen',
+              child: FloatingActionButton.extended(
+                icon: const Icon(Icons.add),
+                label: const Text('Ticket anlegen'),
+                onPressed: () =>
+                    context
+                        .push('/manager/${AppRoutes.managerCreateTicket}')
+                        .then((created) {
+                      if (created == true && context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Ticket erfolgreich angelegt'),
+                            duration: Duration(seconds: 3),
+                          ),
+                        );
+                        _refresh();
+                      }
+                    }),
+              ),
             ),
       body: Column(
         children: [
@@ -202,157 +209,13 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
             )
           : const Text('Ticket-Board'),
       actions: [
-        // Suche — immer sichtbar
         IconButton(
           icon: const Icon(Icons.search),
           tooltip: 'Suchen',
           onPressed: _activateSearch,
         ),
-        // Rechnungen — Badge sichtbar lassen
         _PendingInvoiceButton(
           onTap: () => context.push(AppRoutes.export),
-        ),
-        // Alles weitere im Overflow-Menü
-        PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert),
-          tooltip: 'Mehr',
-          onSelected: (value) {
-            switch (value) {
-              case 'analytics':
-                context.push(AppRoutes.analytics);
-              case 'calendar':
-                context.push(AppRoutes.calendar);
-              case 'export':
-                context.push(AppRoutes.export);
-              case 'tenants':
-                context.push(AppRoutes.tenants);
-              case 'buildings':
-                context.push(AppRoutes.buildings);
-              case 'invitations':
-                context.push('/manager/${AppRoutes.invitations}');
-              case 'statements':
-                context.push(AppRoutes.statements);
-              case 'tenantSettings':
-                context.push(AppRoutes.tenantSettings);
-              case 'bulkImport':
-                context.push(AppRoutes.bulkImport);
-              case 'energy':
-                context.push(AppRoutes.energy);
-              case 'profile':
-                context.push(AppRoutes.profile);
-            }
-          },
-          itemBuilder: (_) => [
-            // ── Auswertung ──────────────────────────────────────────────
-            const _MenuHeader('Auswertung'),
-            const PopupMenuItem(
-              value: 'analytics',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.bar_chart_outlined),
-                title: Text('Analytics'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'calendar',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.calendar_month_outlined),
-                title: Text('Kalender'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'energy',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.bolt_outlined),
-                title: Text('Energieverbrauch'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            // ── Objekte & Personen ──────────────────────────────────────
-            const PopupMenuDivider(),
-            const _MenuHeader('Objekte & Personen'),
-            const PopupMenuItem(
-              value: 'buildings',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.location_city_outlined),
-                title: Text('Gebäude'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'tenants',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.people_outlined),
-                title: Text('Mieter'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'invitations',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.mail_outlined),
-                title: Text('Einladungen'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            // ── Finanzen & Daten ────────────────────────────────────────
-            const PopupMenuDivider(),
-            const _MenuHeader('Finanzen & Daten'),
-            const PopupMenuItem(
-              value: 'statements',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.description_outlined),
-                title: Text('Jahresabrechnungen'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'export',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.download_outlined),
-                title: Text('Export / DATEV'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'bulkImport',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.upload_file_outlined),
-                title: Text('Bulk-Import'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            // ── Einstellungen ───────────────────────────────────────────
-            const PopupMenuDivider(),
-            const PopupMenuItem(
-              value: 'tenantSettings',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.domain_outlined),
-                title: Text('Mandanten-Einstellungen'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-            const PopupMenuItem(
-              value: 'profile',
-              child: ListTile(
-                dense: true,
-                leading: Icon(Icons.account_circle_outlined),
-                title: Text('Profil'),
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-          ],
         ),
       ],
     );
@@ -476,28 +339,98 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView.builder(
-        controller: _scrollController,
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
-        itemCount: _tickets.length + (_hasMore || _isLoading ? 1 : 0),
-        itemBuilder: (context, i) {
-          if (i == _tickets.length) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
-          final ticket = _tickets[i];
-          return _TicketCard(
-            ticket: ticket,
-            onTap: () => context
-                .push(AppRoutes.ticketDetailPath(ticket.id))
-                .then((_) => _refresh()),
-            onAssign: () => _showAssignSheet(ticket),
-          );
-        },
+    return Column(
+      children: [
+        // Fehler-Banner wenn nachfolgende Seite fehlschlägt (Tickets bereits geladen)
+        if (_error != null)
+          _LoadErrorBanner(
+            message: _error!,
+            onRetry: () {
+              setState(() => _error = null);
+              _loadPage();
+            },
+            onDismiss: () => setState(() => _error = null),
+          ),
+        Expanded(
+          child: RefreshIndicator(
+            onRefresh: _refresh,
+            child: ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
+              itemCount: _tickets.length + (_hasMore || _isLoading ? 1 : 0),
+              itemBuilder: (context, i) {
+                if (i == _tickets.length) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                final ticket = _tickets[i];
+                return _TicketCard(
+                  ticket: ticket,
+                  onTap: () => context
+                      .push(AppRoutes.ticketDetailPath(ticket.id))
+                      .then((_) => _refresh()),
+                  onAssign: () => _showAssignSheet(ticket),
+                );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Inline-Fehler-Banner ─────────────────────────────────────────────────────
+
+class _LoadErrorBanner extends StatelessWidget {
+  const _LoadErrorBanner({
+    required this.message,
+    required this.onRetry,
+    required this.onDismiss,
+  });
+  final String message;
+  final VoidCallback onRetry;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(
+          Colors.red.withValues(alpha: 0.08),
+          Theme.of(context).colorScheme.surface,
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.warning_amber_outlined, color: Colors.red, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(fontSize: 13, color: Colors.red),
+            ),
+          ),
+          TextButton(
+            onPressed: onRetry,
+            style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+                visualDensity: VisualDensity.compact),
+            child: const Text('Retry'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 16, color: Colors.red),
+            onPressed: onDismiss,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+        ],
       ),
     );
   }
@@ -846,36 +779,136 @@ class _PendingInvoiceButton extends ConsumerWidget {
   }
 }
 
-// ─── Popup menu section header (non-selectable) ───────────────────────────────
+// ─── Navigation Drawer ────────────────────────────────────────────────────────
 
-class _MenuHeader extends PopupMenuEntry<Never> {
-  const _MenuHeader(this.label);
+class _AppDrawer extends ConsumerWidget {
+  const _AppDrawer();
+
+  void _go(BuildContext context, String route) {
+    Navigator.pop(context); // Drawer schließen
+    context.push(route);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tenant = ref.watch(tenantProvider).valueOrNull;
+
+    return NavigationDrawer(
+      children: [
+        // ── Header ──────────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 28, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (tenant != null) ...[
+                TenantLogoAvatar(
+                  name: tenant.name,
+                  primaryColor: tenant.primaryColor,
+                  logoUrl: tenant.logoUrl,
+                  radius: 20,
+                ),
+                const SizedBox(height: 10),
+                Text(tenant.name,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 15)),
+              ] else
+                const Text('Verwaltung',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 15)),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        const SizedBox(height: 8),
+
+        // ── Auswertung ──────────────────────────────────────────────────
+        const _DrawerSection('AUSWERTUNG'),
+        _DrawerTile(Icons.bar_chart_outlined, 'Analytics',
+            () => _go(context, AppRoutes.analytics)),
+        _DrawerTile(Icons.calendar_month_outlined, 'Kalender',
+            () => _go(context, AppRoutes.calendar)),
+        _DrawerTile(Icons.bolt_outlined, 'Energieverbrauch',
+            () => _go(context, AppRoutes.energy)),
+
+        const SizedBox(height: 4),
+        const Divider(height: 1, indent: 16, endIndent: 16),
+        const SizedBox(height: 4),
+
+        // ── Objekte & Personen ──────────────────────────────────────────
+        const _DrawerSection('OBJEKTE & PERSONEN'),
+        _DrawerTile(Icons.location_city_outlined, 'Gebäude',
+            () => _go(context, AppRoutes.buildings)),
+        _DrawerTile(Icons.description_outlined, 'Mietverhältnisse',
+            () => _go(context, AppRoutes.tenants)),
+        _DrawerTile(Icons.mail_outlined, 'Einladungen',
+            () => _go(context, '/manager/${AppRoutes.invitations}')),
+
+        const SizedBox(height: 4),
+        const Divider(height: 1, indent: 16, endIndent: 16),
+        const SizedBox(height: 4),
+
+        // ── Finanzen & Daten ────────────────────────────────────────────
+        const _DrawerSection('FINANZEN & DATEN'),
+        _DrawerTile(Icons.receipt_long_outlined, 'Jahresabrechnungen',
+            () => _go(context, AppRoutes.statements)),
+        _DrawerTile(Icons.download_outlined, 'Export / DATEV',
+            () => _go(context, AppRoutes.export)),
+        _DrawerTile(Icons.upload_file_outlined, 'Bulk-Import',
+            () => _go(context, AppRoutes.bulkImport)),
+
+        const SizedBox(height: 4),
+        const Divider(height: 1, indent: 16, endIndent: 16),
+        const SizedBox(height: 4),
+
+        // ── Einstellungen ───────────────────────────────────────────────
+        const _DrawerSection('EINSTELLUNGEN'),
+        _DrawerTile(Icons.domain_outlined, 'Mandanten-Einstellungen',
+            () => _go(context, AppRoutes.tenantSettings)),
+        _DrawerTile(Icons.account_circle_outlined, 'Profil',
+            () => _go(context, AppRoutes.profile)),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+}
+
+class _DrawerSection extends StatelessWidget {
+  const _DrawerSection(this.label);
   final String label;
 
   @override
-  double get height => 28;
-
-  @override
-  bool represents(Never? value) => false;
-
-  @override
-  State<_MenuHeader> createState() => _MenuHeaderState();
-}
-
-class _MenuHeaderState extends State<_MenuHeader> {
-  @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 2),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Text(
-        widget.label,
+        label,
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w700,
-          letterSpacing: 0.6,
+          letterSpacing: 0.8,
           color: Theme.of(context).colorScheme.primary,
         ),
       ),
+    );
+  }
+}
+
+class _DrawerTile extends StatelessWidget {
+  const _DrawerTile(this.icon, this.label, this.onTap);
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(icon, size: 22),
+      title: Text(label, style: const TextStyle(fontSize: 14)),
+      onTap: onTap,
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      minTileHeight: 48,
     );
   }
 }

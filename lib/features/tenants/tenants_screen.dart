@@ -6,7 +6,9 @@ import 'package:intl/intl.dart';
 import '../../models/rental_agreement.dart';
 import '../../repositories/rental_agreement_repository.dart';
 import '../../router.dart';
+import '../../services/onboarding_service.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../../widgets/onboarding_tooltip.dart';
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -19,18 +21,22 @@ class TenantsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Mietverhältnisse')),
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.add),
-        label: const Text('Neu anlegen'),
-        onPressed: () => context
-            .push(AppRoutes.createRentalAgreement)
-            .then((created) {
-          if (created == true && context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Mietverhältnis angelegt')),
-            );
-          }
-        }),
+      floatingActionButton: OnboardingTooltip(
+        hintKey: OnboardingKeys.tenantsCreateFab,
+        message: 'Lege hier dein erstes Mietverhältnis an',
+        child: FloatingActionButton.extended(
+          icon: const Icon(Icons.add),
+          label: const Text('Neu anlegen'),
+          onPressed: () => context
+              .push(AppRoutes.createRentalAgreement)
+              .then((created) {
+            if (created == true && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Mietverhältnis angelegt')),
+              );
+            }
+          }),
+        ),
       ),
       body: agreementsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),

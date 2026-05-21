@@ -1,5 +1,16 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+
+/// Eigener Cache-Manager für Tenant-Logos: 7 Tage TTL statt 30 Tage.
+/// Sorgt dafür dass Branding-Änderungen spätestens nach einer Woche greifen.
+final _logoCacheManager = CacheManager(
+  Config(
+    'tenantLogos',
+    stalePeriod: const Duration(days: 7),
+    maxNrOfCacheObjects: 50,
+  ),
+);
 
 /// Rundes Logo des Mandanten — zeigt Bild wenn vorhanden, sonst farbige Initiale.
 class TenantLogoAvatar extends StatelessWidget {
@@ -25,6 +36,7 @@ class TenantLogoAvatar extends StatelessWidget {
         child: ClipOval(
           child: CachedNetworkImage(
             imageUrl: logoUrl!,
+            cacheManager: _logoCacheManager,
             width: radius * 2,
             height: radius * 2,
             fit: BoxFit.cover,

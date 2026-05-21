@@ -28,6 +28,9 @@ dependencies:
   qr_flutter: ^4.1.0
   flutter_local_notifications: ^21.0.0
   cached_network_image: ^3.4.0
+  flutter_cache_manager: ^3.4.1
+  dropdown_search: ^5.0.6
+  shared_preferences: ^2.3.3
   connectivity_plus: ^7.1.1
   cloud_functions: ^5.0.0
   fl_chart: ^0.69.0

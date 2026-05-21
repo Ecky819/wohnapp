@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart' show Color, Colors;
+import 'package:flutter/material.dart' show Color;
+
+import 'app_enums.dart';
 
 // ─── Betriebskostenposition (§2 BetrKV) ──────────────────────────────────────
 
@@ -176,20 +178,10 @@ class RentalAgreement {
   bool get hasUtilityCosts =>
       nebenkostenPositionen.isNotEmpty || monthlyHeatingAdvance != null;
 
-  String get statusLabel => switch (status) {
-        'active' => 'Aktiv',
-        'ended' => 'Beendet',
-        'notice_given' => 'Kündigung',
-        _ => status,
-      };
+  AgreementStatus get statusEnum => AgreementStatus.fromString(status);
+  String get statusLabel => statusEnum.label;
+  Color get statusColor => statusEnum.color;
 
-  Color get statusColor => switch (status) {
-        'active' => Colors.green,
-        'ended' => Colors.grey,
-        'notice_given' => Colors.orange,
-        _ => Colors.grey,
-      };
-
-  bool get isActive => status == 'active';
+  bool get isActive => statusEnum == AgreementStatus.active;
   bool get hasContract => contractUrl != null && contractUrl!.isNotEmpty;
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -10,10 +11,33 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
 import 'repositories/tenant_repository.dart';
 import 'router.dart';
+import 'services/app_logger.dart';
 import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ── Global Error Handlers ────────────────────────────────────────────────
+  // Fängt alle Flutter-Framework-Fehler (Widget-Rebuild-Exceptions, etc.)
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    AppLogger.error(
+      details.exceptionAsString(),
+      stackTrace: details.stack,
+      tag: 'Flutter',
+    );
+  };
+
+  // Fängt unkontrollierte async-Fehler außerhalb des Widget-Trees
+  PlatformDispatcher.instance.onError = (error, stack) {
+    AppLogger.error(error.toString(), stackTrace: stack, tag: 'Platform');
+    return true; // als behandelt markieren → kein OS-Crash
+  };
+
+  // Ersetzt den roten "Red Screen of Death" durch eine lesbare Fehlerseite
+  ErrorWidget.builder = (FlutterErrorDetails details) =>
+      _AppErrorWidget(message: details.exceptionAsString());
+
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await initializeDateFormatting('de_DE');
 
@@ -33,7 +57,64 @@ void main() async {
     (e) => debugPrint('NotificationService init error (non-fatal): $e'),
   );
 
-  runApp(const ProviderScope(child: MyApp()));
+  // runZonedGuarded fängt Fehler die sonst die gesamte Isolate crashen würden
+  runZonedGuarded(
+    () => runApp(const ProviderScope(child: MyApp())),
+    (error, stack) =>
+        AppLogger.error(error.toString(), stackTrace: stack, tag: 'Zone'),
+  );
+}
+
+// ─── App-weiter Fehler-Widget (ersetzt Red Screen of Death) ──────────────────
+
+class _AppErrorWidget extends StatelessWidget {
+  const _AppErrorWidget({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 64, color: Colors.red),
+              const SizedBox(height: 16),
+              const Text(
+                'Ein unerwarteter Fehler ist aufgetreten',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Bitte starten Sie die App neu.\nWiederholte Fehler bitte dem Support melden.',
+                style: TextStyle(color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+              if (kDebugMode) ...[
+                const SizedBox(height: 24),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    message,
+                    style: const TextStyle(
+                        fontSize: 11, fontFamily: 'monospace'),
+                    textAlign: TextAlign.left,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ─── Connectivity provider ────────────────────────────────────────────────────

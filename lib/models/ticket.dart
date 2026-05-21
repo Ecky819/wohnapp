@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart' show Color, Colors, IconData, Icons;
+import 'package:flutter/material.dart' show Color, IconData, Icons;
 
+import 'app_enums.dart';
 import 'insurance_claim.dart';
 
 class Ticket {
@@ -19,8 +20,10 @@ class Ticket {
   final String? unitName;
   final DateTime? createdAt;
   final DateTime? closedAt;
-  /// Planned date for maintenance tickets. Used in the calendar view.
+  /// Geplantes Datum für Wartungstickets (Kalenderansicht).
   final DateTime? scheduledAt;
+  /// Letzter Schreibzeitpunkt — für Conflict-Detection genutzt.
+  final DateTime? updatedAt;
   final List<Map<String, String>> documents;
   final bool archived;
   final InsuranceClaim? insuranceClaim;
@@ -43,6 +46,7 @@ class Ticket {
     this.createdAt,
     this.closedAt,
     this.scheduledAt,
+    this.updatedAt,
     this.documents = const [],
     this.archived = false,
     this.insuranceClaim,
@@ -70,6 +74,7 @@ class Ticket {
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
       closedAt: (data['closedAt'] as Timestamp?)?.toDate(),
       scheduledAt: (data['scheduledAt'] as Timestamp?)?.toDate(),
+      updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
       documents: (data['documents'] as List<dynamic>? ?? [])
           .map((e) => Map<String, String>.from(e as Map))
           .toList(),
@@ -80,6 +85,12 @@ class Ticket {
           : null,
     );
   }
+
+  // ── Typ-sichere Enum-Getter (Backing-Feld bleibt String für Firestore) ────
+
+  TicketStatus get statusEnum => TicketStatus.fromString(status);
+  TicketCategory get categoryEnum => TicketCategory.fromString(category);
+  TicketPriority get priorityEnum => TicketPriority.fromString(priority);
 
   String get categoryLabel {
     switch (category) {
@@ -97,29 +108,6 @@ class Ticket {
     }
   }
 
-  String get statusLabel {
-    switch (status) {
-      case 'open':
-        return 'Offen';
-      case 'in_progress':
-        return 'In Bearbeitung';
-      case 'done':
-        return 'Erledigt';
-      default:
-        return status;
-    }
-  }
-
-  Color get statusColor {
-    switch (status) {
-      case 'open':
-        return Colors.orange;
-      case 'in_progress':
-        return Colors.blue;
-      case 'done':
-        return Colors.green;
-      default:
-        return Colors.grey;
-    }
-  }
+  String get statusLabel => statusEnum.label;
+  Color get statusColor => statusEnum.color;
 }

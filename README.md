@@ -30,12 +30,11 @@ Der End-to-End-Prozess: **Schadensmeldung → Handwerker → Rechnung → Buchha
 Der Markt ist fragmentiert: E-Mail, Telefon, WhatsApp und Buchhaltung laufen parallel und unverbunden. Wohnapp schließt genau diese Lücke — vom ersten Klick des Mieters bis zur fertig gebuchten Rechnung in DATEV oder SAP.
 
 **USP:** Der vollständige digitale Prozess in einer App:
-```
+
 Mieter meldet Schaden → KI analysiert + routet → Handwerker erhält Auftrag
 → Handwerker setzt Termin → Mieter sieht Status in Echtzeit
 → Handwerker lädt Rechnung hoch → KI prüft Plausibilität
 → Manager gibt frei → DATEV / SAP Export automatisch
-```
 
 ---
 
@@ -44,7 +43,7 @@ Mieter meldet Schaden → KI analysiert + routet → Handwerker erhält Auftrag
 Die App hat **drei Rollen** — jede Rolle sieht eine andere Oberfläche:
 
 | Rolle | Deutsch | Was sie tun |
-|---|---|---|
+
 | `manager` | **Verwalter / Manager** | Tickets verwalten, Handwerker zuweisen, Rechnungen prüfen, Berichte erstellen |
 | `contractor` | **Handwerker** | Aufträge annehmen/ablehnen, Termine setzen, Rechnungen einreichen |
 | `tenant_user` | **Mieter** | Schäden melden, Status verfolgen, Jahresabrechnung einsehen |
@@ -56,6 +55,7 @@ Zusätzlich gibt es anonyme **Gäste** (QR-Code-Scan ohne Login).
 ## 3. Alle Features im Überblick
 
 ### Ticket-System (Schadensmeldung & Wartung)
+
 - Mieter melden Schäden per App oder QR-Code (ohne Login)
 - KI analysiert Titel + Beschreibung automatisch: Kategorie, Gewerk, Dringlichkeit
 - Manager sieht alle Tickets im Board mit Filtern (Status, Priorität)
@@ -69,6 +69,7 @@ Zusätzlich gibt es anonyme **Gäste** (QR-Code-Scan ohne Login).
 - Archivierung statt Löschen (Audit-Trail)
 
 ### Handwerker-Marktplatz
+
 - Manager weist Handwerker einem Ticket zu
 - KI schlägt passendes Gewerk vor (Sanitär, Elektro, Heizung, Allgemein)
 - Handwerker kann Auftrag **annehmen** oder **ablehnen**
@@ -76,6 +77,7 @@ Zusätzlich gibt es anonyme **Gäste** (QR-Code-Scan ohne Login).
 - Status-Stepper für Mieter: Gemeldet → In Bearbeitung → Termin → Erledigt
 
 ### Rechnungssystem
+
 - Handwerker lädt Rechnung (PDF) direkt im Ticket hoch
 - **KI-Rechnungsprüfung**: Vergleich mit Marktpreisen, Plausibilitäts-Check
 - Manager gibt Rechnung frei oder lehnt mit Begründung ab
@@ -85,6 +87,7 @@ Zusätzlich gibt es anonyme **Gäste** (QR-Code-Scan ohne Login).
 - Status: Ausstehend → Freigegeben → Abgelehnt → Exportiert
 
 ### Digital Twin (Gebäude & Wohnungen)
+
 - Gebäude mit Wohnungen verwalten
 - Geräte pro Wohnung erfassen (Heizung, Sanitär, Elektro, Allgemein)
 - Wartungsintervalle pro Gerät konfigurierbar
@@ -94,6 +97,7 @@ Zusätzlich gibt es anonyme **Gäste** (QR-Code-Scan ohne Login).
 - **Live-Sensordaten** (wenn IoT-Integration aktiv): Temperatur, Feuchtigkeit, CO₂ etc.
 
 ### Betriebskostenabrechnung (§ 556 BGB)
+
 - Manager erstellt Jahresabrechnung mit Kostenpositionen
 - PDF-Generierung direkt in der App
 - Digitale Zustellung an Mieter
@@ -102,6 +106,7 @@ Zusätzlich gibt es anonyme **Gäste** (QR-Code-Scan ohne Login).
 - Automatische E-Mail-Benachrichtigung via SendGrid
 
 ### Versicherungsfall-Modul
+
 - Tickets können als Versicherungsfall markiert werden
 - Workflow: Gemeldet → In Prüfung → Genehmigt/Abgelehnt → Reguliert
 - Felder: Versicherungsgesellschaft, Policennummer, Schadennummer, Selbstbeteiligung, geschätzter/genehmigter Schaden, Gutachter
@@ -109,6 +114,7 @@ Zusätzlich gibt es anonyme **Gäste** (QR-Code-Scan ohne Login).
 - Automatische Statusanzeige im Ticket-Detail
 
 ### Energieverbrauch-Tracking
+
 - Manuelle Zählerablese-Erfassung pro Wohnung (Strom, Gas, Wasser, Wärme)
 - Verbrauchsberechnung aus Differenz der Ablesungen
 - Übersicht nach Zählertyp (Tab-Navigation)
@@ -116,6 +122,7 @@ Zusätzlich gibt es anonyme **Gäste** (QR-Code-Scan ohne Login).
 - CSV-Export für Heizkostenabrechnung und DATEV
 
 ### Analytik & Reporting
+
 - **Bar-Chart**: Tickets pro Monat (letzte 6 Monate)
 - **Donut-Chart**: Status-Verteilung (Offen / In Bearbeitung / Erledigt)
 - **Linien-Chart**: Ø Bearbeitungszeit pro Monat
@@ -123,6 +130,7 @@ Zusätzlich gibt es anonyme **Gäste** (QR-Code-Scan ohne Login).
 - Analytics-Export als CSV (alle Daten in einer Datei)
 
 ### White-Label & Mandantenfähigkeit
+
 - Jede Verwaltungsgesellschaft = eigener Mandant
 - Eigenes Logo (Upload, max 2 MB)
 - Primärfarbe frei wählbar mit Live-Vorschau
@@ -131,21 +139,25 @@ Zusätzlich gibt es anonyme **Gäste** (QR-Code-Scan ohne Login).
 - Onboarding-Flow für neue Mandanten (2-Schritt-Setup)
 
 ### Bulk-Import
+
 - CSV-Import für Gebäude + Wohnungen
 - CSV-Import für Einladungen (Mieter + Handwerker gleichzeitig)
 - Template wird in der App angezeigt
 
 ### KI-Features
+
 - **Ticket-Routing**: Foto + Text → automatisch Kategorie, Gewerk, Priorität (Claude Haiku)
 - **Rechnungsprüfung**: Vergleich mit deutschen Marktpreisen 2024 (Claude Haiku)
 - **KI-Assistent** (Vorschläge, Begründungen) direkt im UI sichtbar
 
 ### QR / NFC-System
+
 - Jede Wohnung hat einen QR-Code
 - Mieter scannt → Schadensmeldung ohne App-Login (anonymer Gast-Flow)
 - Link enthält unitId + tenantId für automatische Zuordnung
 
 ### Push-Benachrichtigungen
+
 - Ticket-Statusänderung → Push an Mieter
 - Ticket-Zuweisung → Push an Handwerker
 - Neuer Kommentar → Push an alle Beteiligten
@@ -154,15 +166,18 @@ Zusätzlich gibt es anonyme **Gäste** (QR-Code-Scan ohne Login).
 - Separater Android-Channel für Wartungshinweise
 
 ### Benachrichtigungseinstellungen
+
 - Jeder User stellt selbst ein, welche Pushes er erhält
 - Rollenspezifisch: Manager sieht andere Optionen als Mieter oder Handwerker
 - Einstellung direkt im Profil (Toggle-Switches, sofort gespeichert)
 
 ### Kalender
+
 - Termine aller Wartungstickets in Kalenderansicht
 - Handwerker-Terminvorschläge erscheinen automatisch
 
 ### IoT / Smart Home Integration
+
 - Sensor-Daten von beliebigen Geräten (HomeAssistant, MQTT, eigene Hardware)
 - Webhook-Empfang über Cloud Function
 - Live-Anzeige im Digital Twin (Temperatur, Luftfeuchtigkeit, CO₂, Energie etc.)
@@ -170,11 +185,13 @@ Zusätzlich gibt es anonyme **Gäste** (QR-Code-Scan ohne Login).
 - API-Key-Verwaltung in den Mandanten-Einstellungen
 
 ### Einladungssystem
+
 - Manager lädt Mieter und Handwerker per Code ein
 - Mieter registriert sich mit Code → automatisch der richtigen Wohnung zugeordnet
 - Handwerker wählt bei Registrierung seine Fachgebiete
 
 ### Offline-Unterstützung
+
 - Firestore-Offline-Persistenz aktiviert
 - Offline-Banner wenn keine Internetverbindung
 - Änderungen werden automatisch synchronisiert wenn wieder online
@@ -186,7 +203,9 @@ Zusätzlich gibt es anonyme **Gäste** (QR-Code-Scan ohne Login).
 ### Manager-App
 
 #### Dashboard / Ticket-Board (`/manager`)
+
 Das Herzstück der Manager-App.
+
 - Liste aller Tickets mit Infinite Scroll (20 pro Seite)
 - Filter-Bar: Alle / Offen / In Bearbeitung / Erledigt
 - Volltextsuche (Titel, Beschreibung, Wohnungsname)
@@ -198,6 +217,7 @@ Das Herzstück der Manager-App.
 - Predictive-Maintenance-Banner wenn Geräte Wartung brauchen
 
 #### Ticket-Detail (`/ticket/:id`)
+
 - Foto-Galerie (antippbar, Vollbild)
 - Status-Timeline (Stepper)
 - Termin-Banner wenn Handwerker Termin gesetzt hat
@@ -212,6 +232,7 @@ Das Herzstück der Manager-App.
 - Aktivitäts-Log
 
 #### Ticket anlegen (`/manager/create-ticket`)
+
 - Titel + Beschreibung
 - KI-Analyse-Button → automatische Vorschläge für Kategorie + Priorität
 - Kategorie: Schaden / Wartung / Versicherungsfall
@@ -225,6 +246,7 @@ Das Herzstück der Manager-App.
 - Handwerker direkt zuweisen oder Vorschlag übernehmen
 
 #### Versicherungsfall verwalten (`/ticket/:id/insurance-claim`)
+
 - Status-Stepper: Gemeldet → In Prüfung → Genehmigt/Abgelehnt → Reguliert
 - Workflow-Buttons zum Weiterschalten
 - Felder: Versicherungsgesellschaft, Policennummer, Schadennummer
@@ -234,6 +256,7 @@ Das Herzstück der Manager-App.
 - Interne Notizen
 
 #### Analytics (`/analytics`)
+
 - Bar-Chart: Tickets pro Monat
 - Donut-Chart: Status-Verteilung mit interaktiven Segmenten
 - Linien-Chart: Ø Bearbeitungszeit pro Monat
@@ -242,11 +265,13 @@ Das Herzstück der Manager-App.
 - Download-Button: Export als CSV
 
 #### Digital Twin — Gebäude (`/buildings`)
+
 - Liste aller Gebäude (Accordion)
 - Jedes Gebäude zeigt seine Wohnungen
 - Tap auf Wohnung → Wohnungsdetail
 
 #### Wohnungsdetail (`/unit/:id`)
+
 - Wohnungsdaten: Gebäude, Etage, Fläche, Baujahr
 - Mieter-Zuweisung
 - **Live-Sensordaten** (wenn IoT aktiv): Grid-Karten mit Typ, Wert, Zeitstempel
@@ -256,15 +281,18 @@ Das Herzstück der Manager-App.
 - QR-Code anzeigen / teilen
 
 #### Kalender (`/calendar`)
+
 - Monatsansicht aller geplanten Wartungstermine
 - Tap auf Tag → Liste der Tickets
 
 #### Export (`/export`)
+
 - Tab 1 „Tickets": Filter, Vorschau, CSV-Export, PDF-Export
 - Tab 2 „DATEV": Datumsfilter, Rechnungs-Liste, DATEV EXTF-CSV-Export
 - Tab 3 „SAP": Datumsfilter, Rechnungs-Liste, SAP Journal-Entry CSV-Export
 
 #### Energieverbrauch (`/energy`)
+
 - 4 Tabs: Strom / Gas / Wasser / Wärme
 - Pro Tab: Zusammenfassungs-Karte (Anzahl Wohnungen, Gesamtverbrauch)
 - Pro Wohnung: Letzte Ablesung, Verbrauch-Chip (∆), ausklappbare Einzel-Ablesungen
@@ -273,15 +301,18 @@ Das Herzstück der Manager-App.
 - Export-Button (AppBar): CSV mit Verbrauchsberechnung
 
 #### Mieter-Verwaltung (`/tenants`)
+
 - Liste aller Mieter des Mandanten
 - Wohnungs-Zuordnung anzeigen und ändern
 
 #### Jahresabrechnungen (`/statements`)
+
 - Liste aller erstellten Abrechnungen
 - Status-Chips (Entwurf / Zugestellt / Bestätigt)
 - Neue Abrechnung erstellen
 
 #### Mandanten-Einstellungen (`/tenant-settings`)
+
 - **Logo**: Upload, Vorschau, Löschen
 - **Branding**: Live-Vorschau (Farbe + Name + Logo)
 - Unternehmensname, Primärfarbe (Hex)
@@ -293,21 +324,25 @@ Das Herzstück der Manager-App.
 - **IoT / Smart Home**: API-Key generieren, Webhook-URL anzeigen, Copy-Button
 
 #### Bulk-Import (`/bulk-import`)
+
 - Tab Wohnungen: CSV-Template anzeigen, Datei hochladen
 - Tab Einladungen: CSV-Template anzeigen, Datei hochladen
 - Fortschrittsanzeige beim Import
 
 #### Einladungen (`/manager/invitations`)
+
 - Liste aller versendeten Einladungs-Codes
 - Code mit Status (Offen / Verwendet)
 - Neue Einladung erstellen (Rolle + E-Mail)
 
 #### Onboarding (`/onboarding`)
+
 - Nur für neue Manager ohne Mandant
 - Schritt 1: Organisationsname, E-Mail, Adresse, Primärfarbe
 - Schritt 2: Erstes Gebäude + erste Wohnung anlegen
 
 #### Profil (`/profile`)
+
 - Name, E-Mail, Rolle
 - Wohnungs-Zuordnung (Mieter)
 - Fachgebiete (Handwerker — Filter-Chips)
@@ -319,6 +354,7 @@ Das Herzstück der Manager-App.
 ### Mieter-App
 
 #### Home (`/tenant`)
+
 - Willkommens-Banner mit Name
 - Status-Karten: Offene Tickets, Letzte Aktivität
 - Schnellzugriff: Schaden melden, Meine Tickets
@@ -326,15 +362,18 @@ Das Herzstück der Manager-App.
 - Handwerker-Info wenn Termin gesetzt
 
 #### Ticket anlegen
+
 - Titel + Beschreibung
 - Bilder-Upload
 - Wohnung automatisch vorbelegt
 
 #### Meine Tickets (`/tenant/tickets`)
+
 - Liste aller eigenen Tickets
 - Status-Filter
 
 #### Meine Jahresabrechnungen (`/my-statements`)
+
 - Liste aller Abrechnungen für diesen Mieter
 - PDF-Vorschau/Download
 - Empfang bestätigen
@@ -344,12 +383,14 @@ Das Herzstück der Manager-App.
 ### Handwerker-App
 
 #### Home (`/contractor`)
+
 - Liste aller zugewiesenen Tickets
 - Filter: Alle / Offen / In Bearbeitung / Erledigt
 - Ticket-Karte: Titel, Wohnung, Priorität, Termin
 - FAB: Nicht vorhanden (nur reagieren, nicht anlegen)
 
 #### Ticket-Detail
+
 - Gleicher Screen wie Manager, aber eingeschränkte Aktionen:
   - **Annehmen** → Status wechselt zu „In Bearbeitung"
   - **Ablehnen** → Zuweisung wird zurückgezogen
@@ -363,15 +404,18 @@ Das Herzstück der Manager-App.
 ### Gemeinsame Screens
 
 #### Login (`/login`)
+
 - E-Mail + Passwort
 - Link zu Registrierung
 
 #### Registrierung (`/register?code=XXX`)
+
 - Mit Einladungs-Code vorbelegt
 - Name, E-Mail, Passwort
 - Bei Handwerker: Fachgebiete wählen
 
 #### Gast-Schadensmeldung (`/guest-report?unitId=&tenantId=&unitName=`)
+
 - Kein Login nötig (QR-Code-Flow)
 - Titel + Beschreibung + Fotos
 - Wohnungsname wird automatisch aus URL-Parameter befüllt
@@ -381,11 +425,13 @@ Das Herzstück der Manager-App.
 ## 5. Design-System & Theming
 
 ### Farben
+
 Das gesamte Farbschema basiert auf der **Primärfarbe des Mandanten** (gespeichert als Hex-Wert in Firestore). Die App generiert daraus automatisch ein vollständiges Material-3-Theme.
 
 Standard-Primärfarbe: `#6366F1` (Indigo)
 
 Feste Farben im UI (mandantenunabhängig):
+
 - Status **Offen**: `Colors.orange`
 - Status **In Bearbeitung**: `Colors.blue`
 - Status **Erledigt**: `Colors.green`
@@ -394,14 +440,17 @@ Feste Farben im UI (mandantenunabhängig):
 - Claim **Reguliert**: `Colors.purple`
 
 ### Typografie
+
 Material 3 Standard — keine Custom Fonts aktuell.
 
 ### Icons
+
 Ausschließlich `Icons.*_outlined` (Outlined-Variante) für konsistentes Bild.
 
 Wichtige Icons:
+
 | Feature | Icon |
-|---|---|
+
 | Ticket / Schaden | `report_problem_outlined` |
 | Wartung | `build_circle_outlined` |
 | Versicherungsfall | `security_outlined` |
@@ -416,6 +465,7 @@ Wichtige Icons:
 | KI-Analyse | `auto_awesome_outlined` |
 
 ### Komponenten-Muster
+
 - **Cards**: `Card` mit `Padding(EdgeInsets.all(16))` — kein Elevation-Overdrive
 - **Buttons**: Primary-Aktionen → `FilledButton`, Sekundär → `OutlinedButton`, Destruktiv → `TextButton(style: red)`
 - **Status-Badges**: `Container` mit `BorderRadius.circular(20)` + `color.withValues(alpha: 0.12)` + farbiger Text
@@ -425,9 +475,11 @@ Wichtige Icons:
 - **Snackbars**: Erfolg = neutral, Fehler = `backgroundColor: Colors.red`
 
 ### Dark Mode
+
 Voll unterstützt. `ThemeMode.system` — folgt automatisch dem Gerät.
 
 ### Responsive
+
 Aktuell primär für Smartphone (360–430 px Breite) optimiert. Tablet-Layout noch nicht implementiert.
 
 ---
@@ -437,7 +489,7 @@ Aktuell primär für Smartphone (360–430 px Breite) optimiert. Tablet-Layout n
 ### Stack
 
 | Schicht | Technologie |
-|---|---|
+
 | Frontend | Flutter 3.x, Dart |
 | State Management | Riverpod 2.x |
 | Navigation | GoRouter |
@@ -450,7 +502,6 @@ Aktuell primär für Smartphone (360–430 px Breite) optimiert. Tablet-Layout n
 
 ### Datenbankstruktur (Firestore)
 
-```
 tenants/{tenantId}
   name, primaryColorHex, logoUrl, contactEmail, contactPhone, address
   bankIban, bankBic, bankAccountHolder
@@ -521,12 +572,11 @@ energy_readings/{readingId}
   tenantId, unitId, unitName
   type, value, readingDate
   meterNumber, note, createdBy, createdAt
-```
 
 ### Cloud Functions (alle in `europe-west3`)
 
 | Function | Trigger | Was sie tut |
-|---|---|---|
+
 | `sendTicketStatusNotification` | Firestore: `/notifications` created | FCM-Push bei Statusänderung |
 | `sendTicketAssignedNotification` | Firestore: `/notifications` created | FCM-Push bei Zuweisung |
 | `sendNewCommentNotification` | Firestore: `/notifications` created | FCM-Push bei Kommentar |
@@ -540,13 +590,11 @@ energy_readings/{readingId}
 
 ### Storage-Struktur
 
-```
 tickets/{uid}/{ticketId}/img_N.jpg     ← Ticket-Fotos
 tickets/{uid}/{ticketId}/docs/{name}   ← Ticket-Dokumente
 invoices/{uid}/{filename}.pdf          ← Rechnungs-PDFs
 statements/{tenantId}/{filename}.pdf   ← Abrechnungs-PDFs
 logos/{tenantId}/logo.{ext}            ← Mandanten-Logo
-```
 
 ---
 
@@ -571,14 +619,15 @@ logos/{tenantId}/logo.{ext}            ← Mandanten-Logo
 6. **Logo** — das Wohnapp-Produkt-Logo (für Einstellungen, ggf. Splash)
 
 ### Primärfarbe anpassen
+
 Die App-Primärfarbe ist derzeit `#6366F1` (Indigo). Sie kann in `main.dart` als Fallback geändert werden — jeder Mandant überschreibt sie ohnehin mit seiner eigenen Farbe.
 
 ### Schriftart wechseln
+
 Aktuell: System-Default (SF Pro auf iOS, Roboto auf Android). Custom Font → `pubspec.yaml` unter `flutter.fonts` eintragen.
 
 ### Wo Screens zu finden sind
 
-```
 lib/features/
   analytics/         → Analytics-Screen
   auth/              → Register-Screen, QR-Scanner
@@ -604,7 +653,6 @@ lib/
 lib/widgets/
   app_state_widgets.dart  → EmptyState, ErrorState, LoadingState
   tenant_logo.dart         → TenantLogoAvatar (Logo oder Initiale)
-```
 
 ---
 
@@ -633,7 +681,7 @@ flutter test
 ### Benötigte Secrets (GitHub Actions)
 
 | Secret | Inhalt |
-|---|---|
+
 | `GOOGLE_SERVICES_JSON` | `android/app/google-services.json` als base64 |
 | `GOOGLE_SERVICES_PLIST` | `ios/Runner/GoogleService-Info.plist` als base64 |
 
@@ -643,10 +691,9 @@ base64 -i android/app/google-services.json | pbcopy
 ```
 
 ### Firebase Secrets setzen (einmalig)
-```bash
+
 firebase functions:secrets:set ANTHROPIC_API_KEY
 firebase functions:secrets:set SENDGRID_API_KEY
-```
 
 ---
 
@@ -655,14 +702,13 @@ firebase functions:secrets:set SENDGRID_API_KEY
 Sensor-Daten beliebiger IoT-Systeme können per HTTP-Webhook übermittelt werden.
 
 **Webhook-URL:**
-```
-https://europe-west3-wohnapp-mvp.cloudfunctions.net/receiveIotData
-```
+
+europe-west3-wohnapp-mvp.cloudfunctions.net/receiveIotData
 
 **Auth:** Header `X-Api-Key: <key>` — Key wird in Mandanten-Einstellungen → IoT generiert.
 
 **Request-Body:**
-```json
+
 {
   "tenantId": "dein-tenant-id",
   "readings": [
@@ -676,25 +722,25 @@ https://europe-west3-wohnapp-mvp.cloudfunctions.net/receiveIotData
   ],
   "source": "homeassistant"
 }
-```
 
 **Unterstützte Sensor-Typen:** `temperature`, `humidity`, `co2`, `water_leak`, `smoke`, `energy_kwh`, `custom`
 
 ### Schwellwert-Alarme
+
 Bei Überschreitung eines konfigurierten Grenzwerts (min/max pro Gerät) wird automatisch ein Wartungs-Ticket angelegt. Max. 1 Ticket pro Gerät und Sensor-Typ innerhalb von 24 Stunden.
 
 ### HomeAssistant Beispiel
-```yaml
+
 rest_command:
   wohnapp_sensor:
-    url: "https://europe-west3-wohnapp-mvp.cloudfunctions.net/receiveIotData"
+    url: "europe-west3-wohnapp-mvp.cloudfunctions.net/receiveIotData"
     method: POST
     headers:
       Content-Type: application/json
-      X-Api-Key: "<api-key>"
+      X-Api-Key: "api-key"
     payload: >
       {
-        "tenantId": "<tenant-id>",
+        "tenantId": "tenant-id",
         "source": "homeassistant",
         "readings": [{
           "sensorType": "{{ sensor_type }}",
@@ -703,12 +749,11 @@ rest_command:
           "unitId": "{{ unit_id }}"
         }]
       }
-```
 
 ### Fehlersuche
 
 | HTTP | Ursache | Lösung |
-|---|---|---|
+
 | `401` | Header fehlt | `X-Api-Key` ergänzen |
 | `403` | Key falsch | In Einstellungen neu generieren |
 | `404` | tenantId nicht gefunden | Firebase Console → Firestore → `tenants` |
@@ -735,4 +780,4 @@ firebase deploy --only functions:receiveIotData
 firebase deploy --only functions:checkMaintenanceAlerts
 ```
 
-**Firebase Console:** https://console.firebase.google.com/project/wohnapp-mvp/overview
+**Firebase Console:** console.firebase.google.com/project/wohnapp-mvp/overview

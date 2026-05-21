@@ -90,7 +90,11 @@ service cloud.firestore {
       // Mieter erstellt Ticket für sich selbst.
       allow create: if isTenantUser() &&
         request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.tenantId is string &&
+        request.resource.data.tenantId.size() > 0 &&
         request.resource.data.tenantId == userTenantId() &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0 &&
         request.resource.data.status == 'open';
 
       // Anonymer Gast (QR-Code-Flow) erstellt Ticket.
@@ -98,11 +102,17 @@ service cloud.firestore {
         request.resource.data.createdBy == request.auth.uid &&
         request.resource.data.status == 'open' &&
         request.resource.data.tenantId is string &&
-        request.resource.data.tenantId.size() > 0;
+        request.resource.data.tenantId.size() > 0 &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0;
 
       // Manager erstellt Ticket (z.B. Wartungsticket).
       allow create: if isManager() &&
-        request.resource.data.tenantId == userTenantId();
+        request.resource.data.tenantId is string &&
+        request.resource.data.tenantId.size() > 0 &&
+        request.resource.data.tenantId == userTenantId() &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() > 0;
 
       // Manager darf alle Felder im Ticket ändern (Status, Zuweisung, Versicherungsfall …).
       allow update: if isManager() && sameTenant(resource.data);
@@ -159,7 +169,11 @@ service cloud.firestore {
         resource.data.tenantId == userTenantId();
 
       allow create, update: if isManager() &&
-        request.resource.data.tenantId == userTenantId();
+        request.resource.data.tenantId is string &&
+        request.resource.data.tenantId.size() > 0 &&
+        request.resource.data.tenantId == userTenantId() &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0;
 
       allow delete: if false;
     }

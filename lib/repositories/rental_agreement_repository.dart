@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/rental_agreement.dart';
 import '../services/upload_retry_service.dart';
 import '../user_provider.dart';
+import '../utils/app_exception.dart';
 
 class RentalAgreementRepository {
   RentalAgreementRepository(this._firestore, this._storage);
@@ -42,32 +43,47 @@ class RentalAgreementRepository {
   }
 
   Future<String> create(RentalAgreement agreement) async {
-    final ref = _col.doc();
-    await ref.set(agreement.toMap());
-    return ref.id;
+    try {
+      final ref = _col.doc();
+      await ref.set(agreement.toMap());
+      return ref.id;
+    } on FirebaseException catch (e) {
+      throw AppException.fromFirestore(e);
+    }
   }
 
-  Future<void> updateStatus(String id, String status) =>
-      _col.doc(id).update({'status': status});
+  Future<void> updateStatus(String id, String status) async {
+    try {
+      await _col.doc(id).update({'status': status});
+    } on FirebaseException catch (e) {
+      throw AppException.fromFirestore(e);
+    }
+  }
 
   Future<String> uploadContract(
     String agreementId,
     Uint8List bytes,
     String fileName,
   ) async {
-    final ref = _storage.ref('rental_contracts/$agreementId/$fileName');
-    final url = await withRetry(() async {
-      await ref.putData(
-        bytes,
-        SettableMetadata(contentType: 'application/pdf'),
-      );
-      return ref.getDownloadURL();
-    });
-    await _col.doc(agreementId).update({
-      'contractUrl': url,
-      'contractFileName': fileName,
-    });
-    return url;
+    try {
+      final ref = _storage.ref('rental_contracts/$agreementId/$fileName');
+      final url = await withRetry(() async {
+        await ref.putData(
+          bytes,
+          SettableMetadata(contentType: 'application/pdf'),
+        );
+        return ref.getDownloadURL();
+      });
+      await _col.doc(agreementId).update({
+        'contractUrl': url,
+        'contractFileName': fileName,
+      });
+      return url;
+    } on FirebaseException catch (e) {
+      throw AppException.fromStorage(e);
+    } on UploadException catch (e) {
+      throw AppException('Upload fehlgeschlagen nach ${e.attempts} Versuchen.');
+    }
   }
 
   static const _chunkSize = 400;
@@ -76,22 +92,32 @@ class RentalAgreementRepository {
     List<RentalAgreement> agreements, {
     void Function(int done, int total)? onProgress,
   }) async {
-    int done = 0;
-    for (var i = 0; i < agreements.length; i += _chunkSize) {
-      final chunk =
-          agreements.sublist(i, min(i + _chunkSize, agreements.length));
-      final batch = _firestore.batch();
-      for (final a in chunk) {
-        batch.set(_col.doc(), a.toMap());
+    try {
+      int done = 0;
+      for (var i = 0; i < agreements.length; i += _chunkSize) {
+        final chunk =
+            agreements.sublist(i, min(i + _chunkSize, agreements.length));
+        final batch = _firestore.batch();
+        for (final a in chunk) {
+          batch.set(_col.doc(), a.toMap());
+        }
+        await batch.commit();
+        done += chunk.length;
+        onProgress?.call(done, agreements.length);
       }
-      await batch.commit();
-      done += chunk.length;
-      onProgress?.call(done, agreements.length);
+      return agreements.length;
+    } on FirebaseException catch (e) {
+      throw AppException.fromFirestore(e);
     }
-    return agreements.length;
   }
 
-  Future<void> delete(String id) => _col.doc(id).delete();
+  Future<void> delete(String id) async {
+    try {
+      await _col.doc(id).delete();
+    } on FirebaseException catch (e) {
+      throw AppException.fromFirestore(e);
+    }
+  }
 }
 
 // ─── Providers ────────────────────────────────────────────────────────────────

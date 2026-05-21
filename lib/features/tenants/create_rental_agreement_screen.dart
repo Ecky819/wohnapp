@@ -1,3 +1,4 @@
+import 'package:dropdown_search/dropdown_search.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -97,11 +98,24 @@ class _CreateRentalAgreementScreenState
     final picked = await showDatePicker(
       context: context,
       initialDate: _endDate ?? _startDate.add(const Duration(days: 365)),
-      firstDate: _startDate,
+      firstDate: _startDate.add(const Duration(days: 1)),
       lastDate: DateTime(2100),
       locale: const Locale('de'),
     );
-    if (picked != null) setState(() => _endDate = picked);
+    if (picked != null) {
+      if (picked.isBefore(_startDate) || picked.isAtSameMomentAs(_startDate)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Mietende muss nach dem Mietbeginn liegen.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      setState(() => _endDate = picked);
+    }
   }
 
   Future<void> _pickFile() async {
@@ -252,8 +266,20 @@ class _CreateRentalAgreementScreenState
       );
       return;
     }
+    if (!_indefinite &&
+        _endDate != null &&
+        !_endDate!.isAfter(_startDate)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Mietende muss nach dem Mietbeginn liegen.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
 
     setState(() => _isSaving = true);
+    HapticFeedback.lightImpact();
     try {
       final tenantId =
           ref.read(currentUserProvider).valueOrNull?.tenantId ?? '';
@@ -303,7 +329,10 @@ class _CreateRentalAgreementScreenState
         await repo.uploadContract(id, _pickedFileBytes!, _pickedFileName!);
       }
 
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) {
+        FocusScope.of(context).unfocus();
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -375,6 +404,7 @@ class _CreateRentalAgreementScreenState
                         labelText: 'Name *',
                         border: OutlineInputBorder(),
                       ),
+                      textInputAction: TextInputAction.next,
                       validator: (v) => v == null || v.trim().isEmpty
                           ? 'Name erforderlich'
                           : null,
@@ -387,6 +417,7 @@ class _CreateRentalAgreementScreenState
                         border: OutlineInputBorder(),
                       ),
                       keyboardType: TextInputType.emailAddress,
+                      textInputAction: TextInputAction.next,
                     ),
                   ],
                 ),
@@ -405,20 +436,32 @@ class _CreateRentalAgreementScreenState
                       loading: () =>
                           const Center(child: CircularProgressIndicator()),
                       error: (e, _) => Text('Fehler: $e'),
-                      data: (buildings) => DropdownButtonFormField<Building>(
+                      data: (buildings) => DropdownSearch<Building>(
                         key: ValueKey(_selectedBuilding?.id),
-                        decoration: const InputDecoration(
-                          labelText: 'Gebäude *',
-                          border: OutlineInputBorder(),
+                        items: buildings,
+                        selectedItem: _selectedBuilding,
+                        itemAsString: (b) => b.name,
+                        filterFn: (b, filter) =>
+                            b.name.toLowerCase().contains(filter.toLowerCase()) ||
+                            b.address
+                                .toLowerCase()
+                                .contains(filter.toLowerCase()),
+                        compareFn: (a, b) => a.id == b.id,
+                        dropdownDecoratorProps: const DropDownDecoratorProps(
+                          dropdownSearchDecoration: InputDecoration(
+                            labelText: 'Gebäude *',
+                            border: OutlineInputBorder(),
+                          ),
                         ),
-                        initialValue: _selectedBuilding,
-                        hint: const Text('Gebäude auswählen'),
-                        items: buildings
-                            .map((b) => DropdownMenuItem(
-                                  value: b,
-                                  child: Text(b.name),
-                                ))
-                            .toList(),
+                        popupProps: const PopupProps.menu(
+                          showSearchBox: true,
+                          searchFieldProps: TextFieldProps(
+                            decoration: InputDecoration(
+                              hintText: 'Gebäude suchen …',
+                              prefixIcon: Icon(Icons.search),
+                            ),
+                          ),
+                        ),
                         onChanged: (b) async {
                           if (b == null) return;
                           final tid = ref
@@ -441,25 +484,35 @@ class _CreateRentalAgreementScreenState
                       ),
                     ),
                     const SizedBox(height: 12),
-                    DropdownButtonFormField<Unit>(
-                      key: ValueKey('${_selectedBuilding?.id}_${_selectedUnit?.id}'),
-                      decoration: const InputDecoration(
-                        labelText: 'Wohnung *',
-                        border: OutlineInputBorder(),
+                    DropdownSearch<Unit>(
+                      key: ValueKey(
+                          '${_selectedBuilding?.id}_${_selectedUnit?.id}'),
+                      items: _buildingUnits,
+                      selectedItem: _selectedUnit,
+                      itemAsString: (u) => u.displayName,
+                      filterFn: (u, filter) =>
+                          u.name.toLowerCase().contains(filter.toLowerCase()),
+                      compareFn: (a, b) => a.id == b.id,
+                      enabled: _selectedBuilding != null,
+                      dropdownDecoratorProps: DropDownDecoratorProps(
+                        dropdownSearchDecoration: InputDecoration(
+                          labelText: 'Wohnung *',
+                          border: const OutlineInputBorder(),
+                          hintText: _selectedBuilding == null
+                              ? 'Zuerst Gebäude wählen'
+                              : null,
+                        ),
                       ),
-                      initialValue: _selectedUnit,
-                      hint: Text(_selectedBuilding == null
-                          ? 'Zuerst Gebäude wählen'
-                          : 'Wohnung auswählen'),
-                      items: _buildingUnits
-                          .map((u) => DropdownMenuItem(
-                                value: u,
-                                child: Text(u.displayName),
-                              ))
-                          .toList(),
-                      onChanged: _selectedBuilding == null
-                          ? null
-                          : (u) => setState(() => _selectedUnit = u),
+                      popupProps: const PopupProps.menu(
+                        showSearchBox: true,
+                        searchFieldProps: TextFieldProps(
+                          decoration: InputDecoration(
+                            hintText: 'Wohnung suchen …',
+                            prefixIcon: Icon(Icons.search),
+                          ),
+                        ),
+                      ),
+                      onChanged: (u) => setState(() => _selectedUnit = u),
                       validator: (v) =>
                           v == null ? 'Wohnung auswählen' : null,
                     ),
@@ -540,12 +593,13 @@ class _CreateRentalAgreementScreenState
                           child: TextFormField(
                             controller: _rentController,
                             decoration: const InputDecoration(
-                              labelText: 'Kaltmiete',
+                              labelText: 'Kaltmiete (optional)',
                               border: OutlineInputBorder(),
                               suffixText: '€',
                             ),
                             keyboardType: const TextInputType.numberWithOptions(
                                 decimal: true),
+                            textInputAction: TextInputAction.next,
                             inputFormatters: [
                               FilteringTextInputFormatter.allow(
                                   RegExp(r'[0-9,.]')),
@@ -557,12 +611,13 @@ class _CreateRentalAgreementScreenState
                           child: TextFormField(
                             controller: _depositController,
                             decoration: const InputDecoration(
-                              labelText: 'Kaution',
+                              labelText: 'Kaution (optional)',
                               border: OutlineInputBorder(),
                               suffixText: '€',
                             ),
                             keyboardType: const TextInputType.numberWithOptions(
                                 decimal: true),
+                            textInputAction: TextInputAction.next,
                             inputFormatters: [
                               FilteringTextInputFormatter.allow(
                                   RegExp(r'[0-9,.]')),
@@ -592,8 +647,8 @@ class _CreateRentalAgreementScreenState
                           child: TextFormField(
                             controller: _heizkostenController,
                             decoration: const InputDecoration(
-                              labelText: 'Heizkosten-Vorauszahlung',
-                              helperText: 'Pflichtfeld nach HeizkostenVO',
+                              labelText: 'Heizkosten-Vorauszahlung *',
+                              helperText: 'Separat nach HeizkostenVO',
                               border: OutlineInputBorder(),
                               suffixText: '€/Monat',
                             ),
@@ -603,6 +658,17 @@ class _CreateRentalAgreementScreenState
                               FilteringTextInputFormatter.allow(
                                   RegExp(r'[0-9,.]')),
                             ],
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return 'Pflichtfeld nach HeizkostenVO';
+                              }
+                              if (double.tryParse(
+                                      v.trim().replaceAll(',', '.')) ==
+                                  null) {
+                                return 'Ungültiger Betrag';
+                              }
+                              return null;
+                            },
                           ),
                         ),
                       ],
@@ -750,6 +816,9 @@ class _CreateRentalAgreementScreenState
                     border: InputBorder.none,
                   ),
                   maxLines: 3,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) =>
+                      FocusScope.of(context).unfocus(),
                 ),
               ),
             ),

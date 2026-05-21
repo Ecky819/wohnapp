@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -128,6 +129,13 @@ class _ProfileBody extends ConsumerWidget {
           ),
           onPressed: onLogout,
         ),
+
+        const SizedBox(height: 32),
+        const Divider(),
+        const SizedBox(height: 8),
+
+        // ── DSGVO ────────────────────────────────────────────────────
+        _DsgvoSection(user: user),
       ],
     );
   }
@@ -447,6 +455,287 @@ class _NotificationSettingsSectionState
             onChanged: _saving ? null : (v) => _toggle(item.update(v)),
           ),
         ),
+      ],
+    );
+  }
+}
+
+// ─── DSGVO-Sektion ────────────────────────────────────────────────────────────
+
+class _DsgvoSection extends ConsumerStatefulWidget {
+  const _DsgvoSection({required this.user});
+  final AppUser user;
+
+  @override
+  ConsumerState<_DsgvoSection> createState() => _DsgvoSectionState();
+}
+
+class _DsgvoSectionState extends ConsumerState<_DsgvoSection> {
+  bool _isExporting = false;
+  bool _isDeleting = false;
+
+  // ── Datenexport ───────────────────────────────────────────────────────────
+
+  Future<void> _exportData() async {
+    setState(() => _isExporting = true);
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+      final db = FirebaseFirestore.instance;
+
+      final userDoc = await db.collection('users').doc(uid).get();
+      final ticketsSnap = await db
+          .collection('tickets')
+          .where('createdBy', isEqualTo: uid)
+          .limit(200)
+          .get();
+
+      final d = userDoc.data() ?? {};
+      final buffer = StringBuffer()
+        ..writeln('=== Meine Daten (DSGVO Art. 20) ===')
+        ..writeln('Exportiert am: ${DateTime.now().toIso8601String()}')
+        ..writeln()
+        ..writeln('--- Profil ---')
+        ..writeln('Name:    ${d['name'] ?? '–'}')
+        ..writeln('E-Mail:  ${d['email'] ?? '–'}')
+        ..writeln('Rolle:   ${d['role'] ?? '–'}')
+        ..writeln('Mandant: ${d['tenantId'] ?? '–'}')
+        ..writeln('Angelegt: ${(d['createdAt'] as dynamic)?.toDate() ?? '–'}')
+        ..writeln()
+        ..writeln('--- Meine Tickets (${ticketsSnap.docs.length}) ---');
+
+      for (final doc in ticketsSnap.docs) {
+        final t = doc.data();
+        buffer.writeln(
+          '• ${t['title'] ?? '–'} [${t['status'] ?? '–'}] '
+          '${(t['createdAt'] as dynamic)?.toDate() ?? ''}',
+        );
+      }
+
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('Meine Daten (DSGVO Art. 20)'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                buffer.toString(),
+                style:
+                    const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              icon: const Icon(Icons.copy, size: 16),
+              label: const Text('Kopieren'),
+              onPressed: () {
+                Clipboard.setData(
+                    ClipboardData(text: buffer.toString()));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Daten kopiert')),
+                );
+              },
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Schließen'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler beim Export: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
+  // ── Konto löschen ─────────────────────────────────────────────────────────
+
+  Future<void> _deleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Konto löschen?'),
+        content: const Text(
+          'Ihr Konto wird unwiderruflich gelöscht. '
+          'Tickets und Aktivitäten bleiben aus Protokollgründen anonym erhalten.\n\n'
+          'Dieser Vorgang kann nicht rückgängig gemacht werden.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Konto löschen'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _isDeleting = true);
+    try {
+      await _performDelete();
+    } finally {
+      if (mounted) setState(() => _isDeleting = false);
+    }
+  }
+
+  Future<void> _performDelete() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      // Nutzerdokument als gelöscht markieren (kein Hard-Delete: Audit-Trail)
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+        'deletedAt': FieldValue.serverTimestamp(),
+        'fcmToken': FieldValue.delete(),
+      });
+
+      await user.delete();
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        if (mounted) await _reauthAndDelete(user);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Fehler: ${e.message}')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _reauthAndDelete(User user) async {
+    final passwordCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Passwort bestätigen'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Für die Kontolöschung ist eine erneute Anmeldung erforderlich.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: passwordCtrl,
+              obscureText: true,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Passwort',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Bestätigen & löschen'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final credential = EmailAuthProvider.credential(
+        email: user.email ?? '',
+        password: passwordCtrl.text,
+      );
+      await user.reauthenticateWithCredential(credential);
+      await _performDelete();
+    } on FirebaseAuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content:
+                  Text('Authentifizierung fehlgeschlagen: ${e.message}')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.shield_outlined, size: 18, color: Colors.grey),
+            SizedBox(width: 8),
+            Text(
+              'Datenschutz (DSGVO)',
+              style:
+                  TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Sie haben das Recht auf Auskunft und Löschung Ihrer Daten.',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: _isExporting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.download_outlined, size: 16),
+                label: const Text('Daten exportieren'),
+                onPressed: _isExporting ? null : _exportData,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: _isDeleting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.red),
+                      )
+                    : const Icon(Icons.delete_forever_outlined,
+                        size: 16, color: Colors.red),
+                label: const Text('Konto löschen',
+                    style: TextStyle(color: Colors.red)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.red,
+                  side: const BorderSide(color: Colors.red),
+                ),
+                onPressed: _isDeleting ? null : _deleteAccount,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
       ],
     );
   }

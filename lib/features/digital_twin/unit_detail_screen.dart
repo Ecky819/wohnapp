@@ -1032,7 +1032,7 @@ final _sensorReadingsProvider =
     StreamProvider.family<List<SensorReading>, String>((ref, unitId) {
   return ref
       .read(sensorReadingRepositoryProvider)
-      .watchLatestByUnit(unitId);
+      .watchLatest2ByUnit(unitId);
 });
 
 class _SensorReadingsSection extends ConsumerWidget {
@@ -1051,6 +1051,20 @@ class _SensorReadingsSection extends ConsumerWidget {
       data: (readings) {
         if (readings.isEmpty) return const SizedBox.shrink();
 
+        // Split into current (latest) and previous per sensor key.
+        final currentMap = <String, SensorReading>{};
+        final previousMap = <String, SensorReading>{};
+        for (final r in readings) {
+          final key =
+              '${r.sensorType.firestoreValue}_${r.deviceId ?? r.unitId}';
+          if (!currentMap.containsKey(key)) {
+            currentMap[key] = r;
+          } else {
+            previousMap[key] = r;
+          }
+        }
+        final current = currentMap.entries.toList();
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1062,18 +1076,32 @@ class _SensorReadingsSection extends ConsumerWidget {
                   letterSpacing: 0.5),
             ),
             const SizedBox(height: 10),
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: readings.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                childAspectRatio: 2.4,
-              ),
-              itemBuilder: (_, i) =>
-                  _SensorCard(reading: readings[i], timeFmt: _timeFmt),
+            LayoutBuilder(
+              builder: (ctx, constraints) {
+                final cols = constraints.maxWidth < 400 ? 1 : 2;
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: current.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: cols,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: cols == 1 ? 4.0 : 2.4,
+                  ),
+                  itemBuilder: (_, i) {
+                    final entry = current[i];
+                    final prev = previousMap[entry.key];
+                    final trend = prev != null
+                        ? entry.value.value - prev.value
+                        : null;
+                    return _SensorCard(
+                        reading: entry.value,
+                        timeFmt: _timeFmt,
+                        trend: trend);
+                  },
+                );
+              },
             ),
           ],
         );
@@ -1083,14 +1111,27 @@ class _SensorReadingsSection extends ConsumerWidget {
 }
 
 class _SensorCard extends StatelessWidget {
-  const _SensorCard({required this.reading, required this.timeFmt});
+  const _SensorCard({
+    required this.reading,
+    required this.timeFmt,
+    this.trend,
+  });
   final SensorReading reading;
   final DateFormat timeFmt;
+  /// Difference between latest and previous value. Null = no prior reading.
+  final double? trend;
 
   @override
   Widget build(BuildContext context) {
     final type = reading.sensorType;
     final color = type.color;
+
+    final (trendIcon, trendColor) = switch (trend) {
+      null => (null, null),
+      final d when d > 0 => (Icons.arrow_upward, Colors.red),
+      final d when d < 0 => (Icons.arrow_downward, Colors.green),
+      _ => (Icons.arrow_forward, Colors.grey),
+    };
 
     return Card(
       child: Padding(
@@ -1113,12 +1154,20 @@ class _SensorCard extends StatelessWidget {
                     style: const TextStyle(fontSize: 11, color: Colors.grey),
                     overflow: TextOverflow.ellipsis,
                   ),
-                  Text(
-                    '${reading.value % 1 == 0 ? reading.value.toInt() : reading.value.toStringAsFixed(1)} ${reading.unit}',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: color),
+                  Row(
+                    children: [
+                      Text(
+                        '${reading.value % 1 == 0 ? reading.value.toInt() : reading.value.toStringAsFixed(1)} ${reading.unit}',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: color),
+                      ),
+                      if (trendIcon != null) ...[
+                        const SizedBox(width: 4),
+                        Icon(trendIcon, size: 13, color: trendColor),
+                      ],
+                    ],
                   ),
                   Text(
                     timeFmt.format(reading.timestamp),

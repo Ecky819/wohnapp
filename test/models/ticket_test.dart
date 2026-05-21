@@ -32,8 +32,8 @@ void main() {
     test('done → Erledigt', () {
       expect(_make(status: 'done').statusLabel, 'Erledigt');
     });
-    test('unknown falls back to raw value', () {
-      expect(_make(status: 'custom').statusLabel, 'custom');
+    test('unknown falls back to open label', () {
+      expect(_make(status: 'custom').statusLabel, 'Offen');
     });
   });
 
@@ -59,9 +59,9 @@ void main() {
       expect(_make(status: 'done').statusColor.toARGB32(),
           equals(Colors.green.toARGB32()));
     });
-    test('unknown falls back to grey', () {
+    test('unknown falls back to open color (orange)', () {
       expect(_make(status: 'other').statusColor.toARGB32(),
-          equals(Colors.grey.toARGB32()));
+          equals(Colors.orange.toARGB32()));
     });
   });
 }
