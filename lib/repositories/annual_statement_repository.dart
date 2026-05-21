@@ -100,14 +100,14 @@ final annualStatementRepositoryProvider =
 });
 
 final managerStatementsProvider =
-    StreamProvider.family<List<AnnualStatement>, String>((ref, tenantId) {
+    StreamProvider.autoDispose.family<List<AnnualStatement>, String>((ref, tenantId) {
   return ref
       .read(annualStatementRepositoryProvider)
       .watchForManager(tenantId);
 });
 
 final tenantStatementsProvider =
-    StreamProvider.family<List<AnnualStatement>, String>((ref, recipientId) {
+    StreamProvider.autoDispose.family<List<AnnualStatement>, String>((ref, recipientId) {
   return ref
       .read(annualStatementRepositoryProvider)
       .watchForRecipient(recipientId);

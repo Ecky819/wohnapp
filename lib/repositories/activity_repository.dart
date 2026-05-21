@@ -68,6 +68,6 @@ final activityRepositoryProvider = Provider<ActivityRepository>(
 );
 
 final activityProvider =
-    StreamProvider.family<List<ActivityEntry>, String>((ref, ticketId) {
+    StreamProvider.autoDispose.family<List<ActivityEntry>, String>((ref, ticketId) {
   return ref.watch(activityRepositoryProvider).watchActivity(ticketId);
 });

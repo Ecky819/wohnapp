@@ -15,6 +15,7 @@ import '../../repositories/invoice_repository.dart';
 import '../../repositories/tenant_repository.dart';
 import '../../ticket_provider.dart';
 import '../../user_provider.dart';
+import '../../utils/app_exception.dart';
 
 class ExportScreen extends ConsumerWidget {
   const ExportScreen({super.key});
@@ -116,7 +117,7 @@ class _TicketExportTab extends ConsumerWidget {
     final ticketsAsync = ref.watch(allTicketsProvider);
     return ticketsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Fehler: $e')),
+      error: (e, _) => Center(child: Text(userMessage(e))),
       data: (tickets) => _TicketExportBody(
         tickets: tickets,
         buildCsv: _buildCsv,
@@ -483,6 +484,13 @@ class _InvoiceExportTabState extends ConsumerState<_InvoiceExportTab> {
   }
 }
 
+// Top-level provider — avoids creating a new StreamProvider on every build()
+// which would leak Firestore listeners and cause infinite rebuild loops.
+final _invoicesForExportProvider =
+    StreamProvider.autoDispose.family<List<Invoice>, String>((ref, tenantId) {
+  return ref.read(invoiceRepositoryProvider).watchAll(tenantId);
+});
+
 class _InvoiceList extends ConsumerWidget {
   const _InvoiceList({
     required this.tenantId,
@@ -516,14 +524,11 @@ class _InvoiceList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final allAsync = ref.watch(
-      StreamProvider<List<Invoice>>((ref) =>
-          ref.read(invoiceRepositoryProvider).watchAll(tenantId)),
-    );
+    final allAsync = ref.watch(_invoicesForExportProvider(tenantId));
 
     return allAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Fehler: $e')),
+      error: (e, _) => Center(child: Text(userMessage(e))),
       data: (all) {
         final invoices = _filterInvoices(all);
         final exportable = invoices
@@ -882,14 +887,11 @@ class _SapInvoiceList extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final allAsync = ref.watch(
-      StreamProvider<List<Invoice>>((ref) =>
-          ref.read(invoiceRepositoryProvider).watchAll(tenantId)),
-    );
+    final allAsync = ref.watch(_invoicesForExportProvider(tenantId));
 
     return allAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Fehler: $e')),
+      error: (e, _) => Center(child: Text(userMessage(e))),
       data: (all) {
         final invoices = _filter(all);
         final exportable = invoices

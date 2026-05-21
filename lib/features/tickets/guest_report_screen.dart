@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../repositories/activity_repository.dart';
 import '../../repositories/ticket_repository.dart';
 import '../../services/upload_retry_service.dart';
+import '../../utils/app_exception.dart';
 
 /// Anonymous damage-report form — no account required.
 /// Signs in the user anonymously, creates the ticket, then shows a confirmation.
@@ -119,7 +120,7 @@ class _GuestReportScreenState extends ConsumerState<GuestReportScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e')),
+          SnackBar(content: Text(userMessage(e))),
         );
       }
     } finally {

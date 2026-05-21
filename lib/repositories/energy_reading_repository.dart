@@ -73,6 +73,6 @@ final energyReadingRepositoryProvider = Provider<EnergyReadingRepository>(
 );
 
 final energyReadingsByTenantProvider =
-    StreamProvider.family<List<EnergyReading>, String>((ref, tenantId) {
+    StreamProvider.autoDispose.family<List<EnergyReading>, String>((ref, tenantId) {
   return ref.read(energyReadingRepositoryProvider).watchByTenant(tenantId);
 });

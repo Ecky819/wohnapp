@@ -199,10 +199,11 @@ service cloud.firestore {
           !('tenantId' in resource.data)  // Fallback für ältere Dokumente
         );
 
-        // Nur Manager darf Geräte anlegen, bearbeiten, löschen.
-        // lastMaintenanceAlertSentAt + lastSensorAlert werden nur via Admin SDK
-        // (Cloud Functions) geschrieben und brauchen keine Client-Rule.
-        allow create, update, delete: if isManager();
+        // Nur Manager darf Geräte anlegen, bearbeiten, löschen —
+        // und nur innerhalb des eigenen Mandanten (cross-tenant write verhindert).
+        allow create, update: if isManager() &&
+          request.resource.data.tenantId == userTenantId();
+        allow delete: if isManager() && resource.data.tenantId == userTenantId();
       }
     }
 

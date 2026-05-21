@@ -10,6 +10,7 @@ import 'package:printing/printing.dart';
 import '../../models/app_user.dart';
 import '../../ticket_provider.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../../utils/app_exception.dart';
 
 // ─── Data models ──────────────────────────────────────────────────────────────
 
@@ -267,7 +268,7 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
       ),
       body: dataAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ErrorState(message: e.toString()),
+        error: (e, _) => ErrorState(message: userMessage(e)),
         data: (data) => _AnalyticsBody(data: data),
       ),
     );

@@ -8,6 +8,7 @@ import '../../models/ticket.dart';
 import '../../router.dart';
 import '../../ticket_provider.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../../utils/app_exception.dart';
 
 class TicketListScreen extends ConsumerWidget {
   const TicketListScreen({super.key});
@@ -20,7 +21,7 @@ class TicketListScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Meine Tickets')),
       body: ticketsAsync.when(
         loading: () => const TicketSkeletonList(count: 5),
-        error: (e, _) => ErrorState(message: e.toString()),
+        error: (e, _) => ErrorState(message: userMessage(e)),
         data: (tickets) {
           if (tickets.isEmpty) {
             return const EmptyState(

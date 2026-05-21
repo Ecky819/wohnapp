@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/rental_agreement.dart';
 import '../../repositories/rental_agreement_repository.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../../utils/app_exception.dart';
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 
@@ -46,7 +47,7 @@ class _RentalAgreementDetailScreenState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e')),
+          SnackBar(content: Text(userMessage(e))),
         );
       }
     } finally {
@@ -114,7 +115,7 @@ class _RentalAgreementDetailScreenState
       loading: () => const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       ),
-      error: (e, _) => Scaffold(body: ErrorState(message: e.toString())),
+      error: (e, _) => Scaffold(body: ErrorState(message: userMessage(e))),
       data: (agreement) {
         if (agreement == null) {
           return const Scaffold(

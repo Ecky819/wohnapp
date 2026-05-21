@@ -16,6 +16,7 @@ import '../../services/routing_service.dart';
 import '../../services/upload_retry_service.dart';
 import '../../ticket_provider.dart';
 import '../../user_provider.dart';
+import '../../utils/app_exception.dart';
 
 class CreateTicketScreen extends ConsumerStatefulWidget {
   const CreateTicketScreen({super.key});
@@ -281,7 +282,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e')),
+          SnackBar(content: Text(userMessage(e))),
         );
       }
     }

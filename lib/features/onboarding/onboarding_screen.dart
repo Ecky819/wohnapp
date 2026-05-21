@@ -7,6 +7,7 @@ import '../../repositories/building_repository.dart';
 import '../../repositories/tenant_repository.dart';
 import '../../router.dart';
 import '../../user_provider.dart';
+import '../../utils/app_exception.dart';
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -103,7 +104,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+              content: Text(userMessage(e)), backgroundColor: Colors.red),
         );
       }
     } finally {

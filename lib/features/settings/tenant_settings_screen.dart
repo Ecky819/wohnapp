@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../models/tenant.dart';
 import '../../repositories/tenant_repository.dart';
 import '../../user_provider.dart';
+import '../../utils/app_exception.dart';
 
 class TenantSettingsScreen extends ConsumerStatefulWidget {
   const TenantSettingsScreen({super.key});
@@ -150,7 +151,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+              content: Text(userMessage(e)), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -168,7 +169,7 @@ class _TenantSettingsScreenState extends ConsumerState<TenantSettingsScreen> {
       appBar: AppBar(title: const Text('Mandanten-Einstellungen')),
       body: tenantAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Fehler: $e')),
+        error: (e, _) => Center(child: Text(userMessage(e))),
         data: (tenant) {
           if (tenant != null) {
             _initFrom(tenant);
@@ -711,7 +712,7 @@ class _LogoUploadState extends ConsumerState<_LogoUpload> {
       if (mounted) {
         final msg = e.toString().contains('unauthorized')
             ? 'Keine Berechtigung. Stelle sicher, dass dein Account die Rolle "Manager" hat.'
-            : 'Fehler: $e';
+            : userMessage(e);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg), backgroundColor: Colors.red),
         );
@@ -875,7 +876,7 @@ class _IotWebhookSectionState extends ConsumerState<_IotWebhookSection> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+              content: Text(userMessage(e)), backgroundColor: Colors.red),
         );
       }
     } finally {

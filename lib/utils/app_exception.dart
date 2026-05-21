@@ -1,6 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
+/// Returns a human-readable German message for any thrown object.
+/// [AppException] subclasses already carry a translated message.
+/// Everything else shows a safe generic fallback — no raw Dart/Firebase
+/// exception strings are exposed to end users.
+String userMessage(Object e) {
+  if (e is AppException) return e.message;
+  return 'Ein unerwarteter Fehler ist aufgetreten. Bitte erneut versuchen.';
+}
+
 /// Wird geworfen wenn ein User zu viele Aktionen in kurzer Zeit durchführt.
 class RateLimitException extends AppException {
   const RateLimitException()

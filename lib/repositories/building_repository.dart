@@ -219,7 +219,7 @@ final buildingsProvider = StreamProvider<List<Building>>((ref) {
 
 /// Units for a given buildingId. Pass an empty string to get an empty stream.
 final unitsProvider =
-    StreamProvider.family<List<Unit>, String>((ref, buildingId) {
+    StreamProvider.autoDispose.family<List<Unit>, String>((ref, buildingId) {
   if (buildingId.isEmpty) return const Stream.empty();
   final tenantId =
       ref.watch(currentUserProvider).valueOrNull?.tenantId ?? '';
@@ -229,7 +229,7 @@ final unitsProvider =
 
 /// Single unit by id (FutureProvider).
 final unitByIdProvider =
-    FutureProvider.family<Unit?, String>((ref, unitId) async {
+    FutureProvider.autoDispose.family<Unit?, String>((ref, unitId) async {
   if (unitId.isEmpty) return null;
   return ref.read(buildingRepositoryProvider).getUnit(unitId);
 });

@@ -35,7 +35,7 @@ class InvitationsScreen extends ConsumerWidget {
       ),
       body: invitationsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Fehler: $e')),
+        error: (e, _) => Center(child: Text(userMessage(e))),
         data: (invitations) => invitations.isEmpty
             ? const EmptyState(
                 icon: Icons.mail_outlined,
@@ -290,7 +290,7 @@ class _CreateInvitationSheetState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e')),
+          SnackBar(content: Text(userMessage(e))),
         );
       }
     }

@@ -11,6 +11,8 @@ import '../../repositories/building_repository.dart';
 import '../../router.dart';
 import '../../services/routing_service.dart';
 import '../../user_provider.dart';
+import '../../utils/app_exception.dart';
+import '../../widgets/app_state_widgets.dart';
 
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
@@ -54,9 +56,13 @@ class ProfileScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Mein Profil')),
       body: userAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Fehler: $e')),
+        error: (e, _) => ErrorState(message: userMessage(e)),
         data: (user) {
-          if (user == null) return const SizedBox.shrink();
+          if (user == null) {
+            return const ErrorState(
+              message: 'Sitzung abgelaufen. Bitte neu anmelden.',
+            );
+          }
           return _ProfileBody(user: user, onLogout: () => _logout(context));
         },
       ),
@@ -357,7 +363,7 @@ class _NotificationSettingsSectionState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(userMessage(e)), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -548,7 +554,7 @@ class _DsgvoSectionState extends ConsumerState<_DsgvoSection> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler beim Export: $e')),
+          SnackBar(content: Text(userMessage(e))),
         );
       }
     } finally {

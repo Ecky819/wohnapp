@@ -13,6 +13,7 @@ import '../../repositories/annual_statement_repository.dart';
 import '../../models/annual_statement.dart';
 import '../../widgets/app_state_widgets.dart';
 import '../auth/qr_scanner_screen.dart';
+import '../../utils/app_exception.dart';
 
 final _dateFmt = DateFormat('dd.MM.yy HH:mm');
 
@@ -435,7 +436,7 @@ class _RecentTickets extends ConsumerWidget {
     return ticketsAsync.when(
       loading: () => const LinearProgressIndicator(),
       error: (e, _) =>
-          Text('Fehler: $e', style: const TextStyle(color: Colors.red)),
+          Text(userMessage(e), style: const TextStyle(color: Colors.red)),
       data: (tickets) {
         final recent = tickets.take(3).toList();
         if (recent.isEmpty) {

@@ -9,6 +9,7 @@ import '../../repositories/annual_statement_repository.dart';
 import '../../router.dart';
 import '../../user_provider.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../../utils/app_exception.dart';
 
 class ManagerStatementsScreen extends ConsumerWidget {
   const ManagerStatementsScreen({super.key});
@@ -52,7 +53,7 @@ class _StatementsList extends ConsumerWidget {
 
     return stmtsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Fehler: $e')),
+      error: (e, _) => Center(child: Text(userMessage(e))),
       data: (stmts) {
         if (stmts.isEmpty) {
           return const EmptyState(

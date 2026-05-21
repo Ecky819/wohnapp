@@ -24,6 +24,7 @@ import '../../router.dart';
 import '../../services/notification_service.dart';
 import '../../ticket_provider.dart';
 import '../../user_provider.dart';
+import '../../utils/app_exception.dart';
 import '../../widgets/app_state_widgets.dart';
 import 'edit_ticket_screen.dart';
 import 'insurance_claim_screen.dart';
@@ -92,7 +93,7 @@ class TicketDetailScreen extends ConsumerWidget {
             tooltip: 'Link kopieren',
             onPressed: () {
               const base = 'https://wohnapp-mvp.web.app';
-              final url = '$base/ticket/${ref.read(currentUserProvider).valueOrNull?.tenantId ?? ""}#${ticketAsync.valueOrNull?.id ?? ""}';
+              final url = '$base/ticket/$ticketId';
               Clipboard.setData(ClipboardData(text: url));
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('Ticket-Link kopiert')),
@@ -120,7 +121,7 @@ class TicketDetailScreen extends ConsumerWidget {
       ),
       body: ticketAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ErrorState(message: e.toString()),
+        error: (e, _) => ErrorState(message: userMessage(e)),
         data: (t) => _TicketDetailBody(ticket: t),
       ),
     );
@@ -589,7 +590,7 @@ class _ContractorInfoCard extends ConsumerWidget {
 
 // Provider to load a single contractor by UID for the info sheet
 final _contractorProvider =
-    FutureProvider.family<AppUser?, String>((ref, uid) async {
+    FutureProvider.autoDispose.family<AppUser?, String>((ref, uid) async {
   final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
   if (!doc.exists) return null;
   return AppUser.fromMap(uid, doc.data()!);
@@ -891,7 +892,7 @@ class _ActivityLogState extends ConsumerState<_ActivityLog> {
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           ),
           error: (e, _) =>
-              Text('Fehler: $e', style: const TextStyle(color: Colors.red)),
+              Text(userMessage(e), style: const TextStyle(color: Colors.red)),
           data: (all) {
             final entries = _filter == null
                 ? all
@@ -1042,7 +1043,7 @@ class _CommentThreadState extends ConsumerState<_CommentThread> {
         const SizedBox(height: 12),
         commentsAsync.when(
           loading: () => const LinearProgressIndicator(),
-          error: (e, _) => Text('Fehler: $e',
+          error: (e, _) => Text(userMessage(e),
               style: const TextStyle(color: Colors.red)),
           data: (comments) {
             if (comments.isEmpty) {
@@ -1172,7 +1173,7 @@ class _InvoiceSectionState extends ConsumerState<_InvoiceSection> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(userMessage(e)), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -1223,7 +1224,7 @@ class _InvoiceSectionState extends ConsumerState<_InvoiceSection> {
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           ),
           error: (e, _) =>
-              Text('Fehler: $e', style: const TextStyle(color: Colors.red)),
+              Text(userMessage(e), style: const TextStyle(color: Colors.red)),
           data: (invoices) {
             if (invoices.isEmpty) {
               return const Padding(
@@ -1340,7 +1341,7 @@ class _ContractorActionCardState extends ConsumerState<_ContractorActionCard> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+              content: Text(userMessage(e)), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -1385,7 +1386,7 @@ class _ContractorActionCardState extends ConsumerState<_ContractorActionCard> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+              content: Text(userMessage(e)), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -1430,7 +1431,7 @@ class _ContractorActionCardState extends ConsumerState<_ContractorActionCard> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+              content: Text(userMessage(e)), backgroundColor: Colors.red),
         );
       }
     } finally {

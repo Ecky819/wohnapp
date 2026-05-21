@@ -7,6 +7,7 @@ import '../../models/ticket.dart';
 import '../../repositories/activity_repository.dart';
 import '../../ticket_provider.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../../utils/app_exception.dart';
 
 class InsuranceClaimScreen extends ConsumerWidget {
   const InsuranceClaimScreen({super.key, required this.ticketId});
@@ -20,7 +21,7 @@ class InsuranceClaimScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Versicherungsfall')),
       body: ticketAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ErrorState(message: e.toString()),
+        error: (e, _) => ErrorState(message: userMessage(e)),
         data: (ticket) {
           final claim =
               ticket.insuranceClaim ??
@@ -155,7 +156,7 @@ class _ClaimBodyState extends ConsumerState<_ClaimBody> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(userMessage(e)), backgroundColor: Colors.red),
         );
       }
     } finally {

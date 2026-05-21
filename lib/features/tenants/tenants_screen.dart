@@ -7,6 +7,7 @@ import '../../models/rental_agreement.dart';
 import '../../repositories/rental_agreement_repository.dart';
 import '../../router.dart';
 import '../../services/onboarding_service.dart';
+import '../../utils/app_exception.dart';
 import '../../widgets/app_state_widgets.dart';
 import '../../widgets/onboarding_tooltip.dart';
 
@@ -14,6 +15,13 @@ import '../../widgets/onboarding_tooltip.dart';
 
 class TenantsScreen extends ConsumerWidget {
   const TenantsScreen({super.key});
+
+  Future<void> _refresh(WidgetRef ref) async {
+    ref.invalidate(rentalAgreementsProvider);
+    try {
+      await ref.read(rentalAgreementsProvider.future);
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -39,15 +47,27 @@ class TenantsScreen extends ConsumerWidget {
         ),
       ),
       body: agreementsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ErrorState(message: e.toString()),
+        loading: () => const _SkeletonList(),
+        error: (e, _) => ErrorState(
+          message: userMessage(e),
+          onRetry: () => _refresh(ref),
+        ),
         data: (agreements) {
           if (agreements.isEmpty) {
-            return const EmptyState(
-              icon: Icons.description_outlined,
-              title: 'Keine Mietverhältnisse',
-              subtitle:
-                  'Tippe auf „Neu anlegen" um einen Mietvertrag einzupflegen.',
+            return RefreshIndicator(
+              onRefresh: () => _refresh(ref),
+              child: const SingleChildScrollView(
+                physics: AlwaysScrollableScrollPhysics(),
+                child: SizedBox(
+                  height: 400,
+                  child: EmptyState(
+                    icon: Icons.description_outlined,
+                    title: 'Keine Mietverhältnisse',
+                    subtitle:
+                        'Tippe auf „Neu anlegen" um einen Mietvertrag einzupflegen.',
+                  ),
+                ),
+              ),
             );
           }
 
@@ -58,33 +78,90 @@ class TenantsScreen extends ConsumerWidget {
           final ended =
               agreements.where((a) => a.status == 'ended').toList();
 
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(0, 8, 0, 80),
-            children: [
-              if (active.isNotEmpty) ...[
-                _SectionHeader(
-                    label: 'Aktiv',
-                    count: active.length,
-                    color: Colors.green),
-                ...active.map((a) => _AgreementTile(agreement: a)),
+          return RefreshIndicator(
+            onRefresh: () => _refresh(ref),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(0, 8, 0, 80),
+              children: [
+                if (active.isNotEmpty) ...[
+                  _SectionHeader(
+                      label: 'Aktiv',
+                      count: active.length,
+                      color: Colors.green),
+                  ...active.map((a) => _AgreementTile(agreement: a)),
+                ],
+                if (notice.isNotEmpty) ...[
+                  _SectionHeader(
+                      label: 'Kündigung',
+                      count: notice.length,
+                      color: Colors.orange),
+                  ...notice.map((a) => _AgreementTile(agreement: a)),
+                ],
+                if (ended.isNotEmpty) ...[
+                  _SectionHeader(
+                      label: 'Beendet',
+                      count: ended.length,
+                      color: Colors.grey),
+                  ...ended.map((a) => _AgreementTile(agreement: a)),
+                ],
               ],
-              if (notice.isNotEmpty) ...[
-                _SectionHeader(
-                    label: 'Kündigung',
-                    count: notice.length,
-                    color: Colors.orange),
-                ...notice.map((a) => _AgreementTile(agreement: a)),
-              ],
-              if (ended.isNotEmpty) ...[
-                _SectionHeader(
-                    label: 'Beendet',
-                    count: ended.length,
-                    color: Colors.grey),
-                ...ended.map((a) => _AgreementTile(agreement: a)),
-              ],
-            ],
+            ),
           );
         },
+      ),
+    );
+  }
+}
+
+// ─── Skeleton loading list ────────────────────────────────────────────────────
+
+class _SkeletonList extends StatelessWidget {
+  const _SkeletonList();
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = Theme.of(context).colorScheme.surfaceContainerHighest;
+    return ListView.builder(
+      itemCount: 6,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+      itemBuilder: (_, __) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Container(
+          height: 72,
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              const SizedBox(width: 16),
+              CircleAvatar(radius: 20, backgroundColor: bg),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                        height: 14,
+                        width: 140,
+                        decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(4))),
+                    const SizedBox(height: 6),
+                    Container(
+                        height: 11,
+                        width: 100,
+                        decoration: BoxDecoration(
+                            color: Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(4))),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

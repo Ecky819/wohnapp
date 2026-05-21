@@ -12,6 +12,7 @@ import '../../repositories/annual_statement_repository.dart';
 import '../../repositories/tenant_repository.dart';
 import '../../user_provider.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../../utils/app_exception.dart';
 
 class TenantStatementsScreen extends ConsumerWidget {
   const TenantStatementsScreen({super.key});
@@ -37,7 +38,7 @@ class _TenantStatementsList extends ConsumerWidget {
     final stmtsAsync = ref.watch(tenantStatementsProvider(recipientId));
     return stmtsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Fehler: $e')),
+      error: (e, _) => Center(child: Text(userMessage(e))),
       data: (stmts) {
         if (stmts.isEmpty) {
           return const EmptyState(

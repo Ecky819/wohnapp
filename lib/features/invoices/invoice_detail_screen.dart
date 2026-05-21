@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/invoice.dart';
 import '../../repositories/invoice_repository.dart';
 import '../../services/invoice_ai_service.dart';
+import '../../utils/app_exception.dart';
 
 class InvoiceDetailScreen extends ConsumerStatefulWidget {
   const InvoiceDetailScreen({super.key, required this.invoiceId});
@@ -64,7 +65,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+              content: Text(userMessage(e)), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -119,7 +120,7 @@ class _InvoiceDetailScreenState extends ConsumerState<InvoiceDetailScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+              content: Text(userMessage(e)), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -169,7 +170,7 @@ class _InvoiceDetailBody extends ConsumerWidget {
 
     return invoiceAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => Center(child: Text('Fehler: $e')),
+      error: (e, _) => Center(child: Text(userMessage(e))),
       data: (invoice) {
         if (invoice == null) {
           return const Center(child: Text('Rechnung nicht gefunden.'));
@@ -553,7 +554,7 @@ class _Row extends StatelessWidget {
 // ─── Provider: load single invoice by ID ──────────────────────────────────────
 
 final _invoiceByIdProvider =
-    StreamProvider.family<Invoice?, String>((ref, invoiceId) {
+    StreamProvider.autoDispose.family<Invoice?, String>((ref, invoiceId) {
   return FirebaseInvoiceStream.watchById(invoiceId);
 });
 

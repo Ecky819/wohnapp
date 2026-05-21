@@ -94,13 +94,42 @@ class _RouterNotifier extends ChangeNotifier {
 
   final Ref _ref;
 
+  // Routes that require the 'manager' role.
+  static const _managerOnlyPrefixes = [
+    '/manager',
+    '/analytics',
+    '/buildings',
+    '/unit/',
+    '/tenants',
+    '/export',
+    '/tenant-settings',
+    '/bulk-import',
+    '/statements',
+    '/calendar',
+    '/energy',
+    '/rental-agreement',
+  ];
+
+  // Routes that require the 'contractor' role (exact or prefix).
+  static const _contractorOnlyPrefixes = ['/contractor'];
+
+  // Routes only for tenant_user role.
+  static const _tenantOnlyPrefixes = ['/tenant', '/my-statements'];
+
+  static bool _matchesPrefixes(String loc, List<String> prefixes) =>
+      prefixes.any((p) => loc == p || loc.startsWith('$p/'));
+
   String? redirect(BuildContext context, GoRouterState state) {
     final isLoggedIn = FirebaseAuth.instance.currentUser != null;
     final loc = state.matchedLocation;
     final onLogin = loc == AppRoutes.login;
     final onRegister = loc == AppRoutes.register;
+    final onGuestReport = loc.startsWith(AppRoutes.guestReport);
 
-    if (!isLoggedIn) return (onLogin || onRegister) ? null : AppRoutes.login;
+    // Unauthenticated users may only visit login, register, or guest-report.
+    if (!isLoggedIn) {
+      return (onLogin || onRegister || onGuestReport) ? null : AppRoutes.login;
+    }
 
     final userAsync = _ref.read(currentUserProvider);
     final onOnboarding = loc == AppRoutes.onboarding;
@@ -108,21 +137,43 @@ class _RouterNotifier extends ChangeNotifier {
     return userAsync.whenOrNull(
       data: (user) {
         if (user == null) return null;
+
+        // Redirect from auth screens to role home.
         if (onLogin || onRegister) return _homeForRole(user.role);
 
+        // Manager: check onboarding first, then enforce role boundaries.
         if (user.role == 'manager') {
           final tenantAsync = _ref.read(tenantProvider);
-          return tenantAsync.when(
-            // Tenant data still loading → hold position, don't redirect yet.
-            // This prevents a transient null from triggering the onboarding.
-            loading: () => null,
-            error: (_, __) => null,
+          final onboardingRedirect = tenantAsync.whenOrNull(
             data: (tenant) {
               if (tenant == null && !onOnboarding) return AppRoutes.onboarding;
               if (tenant != null && onOnboarding) return AppRoutes.manager;
               return null;
             },
           );
+          if (onboardingRedirect != null) return onboardingRedirect;
+
+          // Manager must not access contractor-only or tenant-only areas.
+          if (_matchesPrefixes(loc, _contractorOnlyPrefixes) ||
+              _matchesPrefixes(loc, _tenantOnlyPrefixes)) {
+            return AppRoutes.manager;
+          }
+          return null;
+        }
+
+        // Contractor: block manager-only and tenant-only routes.
+        if (user.role == 'contractor') {
+          if (_matchesPrefixes(loc, _managerOnlyPrefixes) ||
+              _matchesPrefixes(loc, _tenantOnlyPrefixes)) {
+            return AppRoutes.contractor;
+          }
+          return null;
+        }
+
+        // Tenant user: block manager-only and contractor-only routes.
+        if (_matchesPrefixes(loc, _managerOnlyPrefixes) ||
+            _matchesPrefixes(loc, _contractorOnlyPrefixes)) {
+          return AppRoutes.tenant;
         }
         return null;
       },

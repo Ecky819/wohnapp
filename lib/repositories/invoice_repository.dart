@@ -36,10 +36,11 @@ class InvoiceRepository {
         .map((s) => s.docs.map(Invoice.fromFirestore).toList());
   }
 
-  Stream<List<Invoice>> watchAll(String tenantId) {
+  Stream<List<Invoice>> watchAll(String tenantId, {int limit = 500}) {
     return _col
         .where('tenantId', isEqualTo: tenantId)
         .orderBy('createdAt', descending: true)
+        .limit(limit)
         .snapshots()
         .map((s) => s.docs.map(Invoice.fromFirestore).toList());
   }
@@ -113,13 +114,13 @@ final invoiceRepositoryProvider = Provider<InvoiceRepository>((ref) {
 });
 
 final invoicesForTicketProvider =
-    StreamProvider.family<List<Invoice>, String>((ref, ticketId) {
+    StreamProvider.autoDispose.family<List<Invoice>, String>((ref, ticketId) {
   final tenantId = ref.watch(currentUserProvider).valueOrNull?.tenantId ?? '';
   if (tenantId.isEmpty) return const Stream.empty();
   return ref.read(invoiceRepositoryProvider).watchForTicket(ticketId, tenantId);
 });
 
 final pendingInvoicesProvider =
-    StreamProvider.family<List<Invoice>, String>((ref, tenantId) {
+    StreamProvider.autoDispose.family<List<Invoice>, String>((ref, tenantId) {
   return ref.read(invoiceRepositoryProvider).watchPending(tenantId);
 });

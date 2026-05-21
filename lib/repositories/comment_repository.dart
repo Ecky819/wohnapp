@@ -43,6 +43,6 @@ final commentRepositoryProvider = Provider<CommentRepository>(
 );
 
 final commentsProvider =
-    StreamProvider.family<List<Comment>, String>((ref, ticketId) {
+    StreamProvider.autoDispose.family<List<Comment>, String>((ref, ticketId) {
   return ref.watch(commentRepositoryProvider).watchComments(ticketId);
 });

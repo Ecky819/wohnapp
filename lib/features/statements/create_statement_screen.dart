@@ -11,6 +11,7 @@ import '../../models/statement_position.dart';
 import '../../repositories/annual_statement_repository.dart';
 import '../../user_provider.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../../utils/app_exception.dart';
 import 'statement_pdf_generator.dart';
 
 // ─── Lokaler Entwurf einer Kostenposition (inkl. noch nicht hochgeladener Bilder)
@@ -236,7 +237,7 @@ class _CreateStatementScreenState extends ConsumerState<CreateStatementScreen> {
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
-        _snack('Fehler: $e', isError: true);
+        _snack(userMessage(e), isError: true);
       }
     } finally {
       if (mounted) setState(() => _saving = false);

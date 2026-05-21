@@ -61,7 +61,7 @@ final filteredContractorTicketsProvider = Provider<AsyncValue<List<Ticket>>>((re
 // ─── Detail ──────────────────────────────────────────────────────────────────
 
 final ticketDetailProvider =
-    StreamProvider.family<Ticket, String>((ref, ticketId) {
+    StreamProvider.autoDispose.family<Ticket, String>((ref, ticketId) {
   return ref.watch(ticketRepositoryProvider).watchOne(ticketId);
 });
 

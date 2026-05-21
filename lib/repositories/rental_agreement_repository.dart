@@ -137,7 +137,7 @@ final rentalAgreementsProvider = StreamProvider<List<RentalAgreement>>((ref) {
 });
 
 final rentalAgreementByIdProvider =
-    StreamProvider.family<RentalAgreement?, String>((ref, id) {
+    StreamProvider.autoDispose.family<RentalAgreement?, String>((ref, id) {
   if (id.isEmpty) return const Stream.empty();
   return ref.read(rentalAgreementRepositoryProvider).watchOne(id);
 });

@@ -11,6 +11,7 @@ import '../../models/energy_reading.dart';
 import '../../repositories/building_repository.dart';
 import '../../repositories/energy_reading_repository.dart';
 import '../../user_provider.dart';
+import '../../utils/app_exception.dart';
 import '../../widgets/app_state_widgets.dart';
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -93,7 +94,7 @@ class _EnergyTab extends ConsumerWidget {
 
     return readingsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => ErrorState(message: e.toString()),
+      error: (e, _) => ErrorState(message: userMessage(e)),
       data: (all) {
         final readings = all.where((r) => r.type == type).toList();
 
@@ -402,7 +403,7 @@ class _AddReadingSheetState extends ConsumerState<_AddReadingSheet> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text(userMessage(e)), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -456,7 +457,7 @@ class _AddReadingSheetState extends ConsumerState<_AddReadingSheet> {
               // Wohnung
               buildingsAsync.when(
                 loading: () => const LinearProgressIndicator(),
-                error: (e, _) => Text('Fehler: $e'),
+                error: (e, _) => Text(userMessage(e)),
                 data: (buildings) {
                   final units = <(String id, String name)>[];
                   for (final b in buildings) {

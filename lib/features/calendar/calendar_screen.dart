@@ -8,6 +8,7 @@ import '../../models/ticket.dart';
 import '../../router.dart';
 import '../../ticket_provider.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../../utils/app_exception.dart';
 
 class CalendarScreen extends ConsumerStatefulWidget {
   const CalendarScreen({super.key});
@@ -67,7 +68,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       ),
       body: ticketsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Fehler: $e')),
+        error: (e, _) => Center(child: Text(userMessage(e))),
         data: (tickets) {
           final eventMap = _buildEventMap(tickets);
 

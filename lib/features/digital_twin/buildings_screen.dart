@@ -7,6 +7,7 @@ import '../../models/unit.dart';
 import '../../repositories/building_repository.dart';
 import '../../router.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../../utils/app_exception.dart';
 
 class BuildingsScreen extends ConsumerWidget {
   const BuildingsScreen({super.key});
@@ -19,7 +20,7 @@ class BuildingsScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Gebäude & Wohnungen')),
       body: buildingsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ErrorState(message: e.toString()),
+        error: (e, _) => ErrorState(message: userMessage(e)),
         data: (buildings) => buildings.isEmpty
             ? const EmptyState(
                 icon: Icons.location_city_outlined,
@@ -67,7 +68,7 @@ class _BuildingSection extends ConsumerWidget {
               ),
               error: (e, _) => Padding(
                 padding: const EdgeInsets.all(12),
-                child: Text('Fehler: $e',
+                child: Text(userMessage(e),
                     style: const TextStyle(color: Colors.red)),
               ),
               data: (units) => units.isEmpty

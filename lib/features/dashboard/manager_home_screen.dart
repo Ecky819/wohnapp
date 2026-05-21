@@ -19,6 +19,7 @@ import '../../services/onboarding_service.dart';
 import '../../widgets/app_state_widgets.dart';
 import '../../widgets/onboarding_tooltip.dart';
 import '../../widgets/tenant_logo.dart';
+import '../../utils/app_exception.dart';
 
 const _kPageSize = 20;
 
@@ -265,7 +266,7 @@ class _ManagerHomeScreenState extends ConsumerState<ManagerHomeScreen> {
     final allAsync = ref.watch(allTicketsProvider);
     return allAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, _) => ErrorState(message: e.toString()),
+      error: (e, _) => ErrorState(message: userMessage(e)),
       data: (all) {
         final q = _searchQuery;
         final results = all.where((t) {
@@ -603,7 +604,7 @@ class _AssignSheet extends ConsumerWidget {
           const SizedBox(height: 8),
           contractorsAsync.when(
             loading: () => const CircularProgressIndicator(),
-            error: (e, _) => Text('Fehler: $e'),
+            error: (e, _) => Text(userMessage(e)),
             data: (contractors) => contractors.isEmpty
                 ? const Text(
                     'Keine Handwerker vorhanden.',

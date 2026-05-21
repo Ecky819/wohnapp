@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/ticket.dart';
 import '../../repositories/activity_repository.dart';
 import '../../ticket_provider.dart';
+import '../../utils/app_exception.dart';
 
 class EditTicketScreen extends ConsumerStatefulWidget {
   const EditTicketScreen({super.key, required this.ticket});
@@ -57,7 +58,7 @@ class _EditTicketScreenState extends ConsumerState<EditTicketScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
+            .showSnackBar(SnackBar(content: Text(userMessage(e))));
       }
     }
     if (mounted) setState(() => _saving = false);

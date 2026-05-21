@@ -22,6 +22,7 @@ import '../../repositories/ticket_repository.dart';
 import '../../router.dart';
 import '../../user_provider.dart';
 import '../../widgets/app_state_widgets.dart';
+import '../../utils/app_exception.dart';
 import 'unit_qr_code_screen.dart';
 
 // ─── Providers ────────────────────────────────────────────────────────────────
@@ -33,14 +34,14 @@ final _tenantsProvider = StreamProvider<List<AppUser>>((ref) {
   return ref.read(userRepositoryProvider).watchTenants(tenantId);
 });
 
-final _unitTicketsProvider = StreamProvider.family<List<Ticket>, String>((
+final _unitTicketsProvider = StreamProvider.autoDispose.family<List<Ticket>, String>((
   ref,
   unitId,
 ) {
   return ref.read(ticketRepositoryProvider).watchByUnit(unitId);
 });
 
-final _unitByIdProvider = FutureProvider.family<Unit?, String>((
+final _unitByIdProvider = FutureProvider.autoDispose.family<Unit?, String>((
   ref,
   unitId,
 ) async {
@@ -66,7 +67,7 @@ class UnitDetailScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Wohnungsdetails')),
       body: unitAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ErrorState(message: e.toString()),
+        error: (e, _) => ErrorState(message: userMessage(e)),
         data: (unit) => unit == null
             ? const ErrorState(message: 'Wohnung nicht gefunden.')
             : _UnitDetailBody(unit: unit),
@@ -205,7 +206,7 @@ class _UnitDetailBody extends ConsumerWidget {
 
         devicesAsync.when(
           loading: () => const LinearProgressIndicator(),
-          error: (e, _) => ErrorState(message: e.toString()),
+          error: (e, _) => ErrorState(message: userMessage(e)),
           data: (devices) => devices.isEmpty
               ? EmptyState(
                   icon: Icons.devices_other_outlined,
@@ -242,7 +243,7 @@ class _UnitDetailBody extends ConsumerWidget {
 
         ticketsAsync.when(
           loading: () => const LinearProgressIndicator(),
-          error: (e, _) => ErrorState(message: e.toString()),
+          error: (e, _) => ErrorState(message: userMessage(e)),
           data: (tickets) => tickets.isEmpty
               ? const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
@@ -283,7 +284,7 @@ class _UnitDetailBody extends ConsumerWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Fehler: $e'), backgroundColor: Colors.red),
+              content: Text(userMessage(e)), backgroundColor: Colors.red),
         );
       }
       return;
@@ -367,7 +368,7 @@ class _TenantAssignmentCard extends ConsumerWidget {
             const SizedBox(height: 12),
             tenantsAsync.when(
               loading: () => const LinearProgressIndicator(),
-              error: (e, _) => Text('Fehler: $e',
+              error: (e, _) => Text(userMessage(e),
                   style: const TextStyle(color: Colors.red)),
               data: (tenants) {
                 // Currently assigned tenant (if any)
@@ -1029,7 +1030,7 @@ class _InfoRow extends StatelessWidget {
 // ─── Sensor-Readings ──────────────────────────────────────────────────────────
 
 final _sensorReadingsProvider =
-    StreamProvider.family<List<SensorReading>, String>((ref, unitId) {
+    StreamProvider.autoDispose.family<List<SensorReading>, String>((ref, unitId) {
   return ref
       .read(sensorReadingRepositoryProvider)
       .watchLatest2ByUnit(unitId);

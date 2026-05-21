@@ -92,13 +92,13 @@ final deviceRepositoryProvider = Provider<DeviceRepository>(
 );
 
 final devicesProvider =
-    StreamProvider.family<List<Device>, String>((ref, unitId) {
+    StreamProvider.autoDispose.family<List<Device>, String>((ref, unitId) {
   if (unitId.isEmpty) return const Stream.empty();
   return ref.read(deviceRepositoryProvider).watchDevices(unitId);
 });
 
 final maintenanceAlertsProvider =
-    StreamProvider.family<List<Device>, String>((ref, tenantId) {
+    StreamProvider.autoDispose.family<List<Device>, String>((ref, tenantId) {
   if (tenantId.isEmpty) return const Stream.empty();
   return ref.read(deviceRepositoryProvider).watchMaintenanceAlerts(tenantId);
 });

@@ -12,6 +12,7 @@ import '../../models/unit.dart';
 import '../../repositories/building_repository.dart';
 import '../../repositories/rental_agreement_repository.dart';
 import '../../user_provider.dart';
+import '../../utils/app_exception.dart';
 
 // ─── Lokale Hilfsklasse für das Formular ─────────────────────────────────────
 
@@ -336,7 +337,7 @@ class _CreateRentalAgreementScreenState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e')),
+          SnackBar(content: Text(userMessage(e))),
         );
       }
     } finally {
@@ -435,7 +436,7 @@ class _CreateRentalAgreementScreenState
                     buildingsAsync.when(
                       loading: () =>
                           const Center(child: CircularProgressIndicator()),
-                      error: (e, _) => Text('Fehler: $e'),
+                      error: (e, _) => Text(userMessage(e)),
                       data: (buildings) => DropdownSearch<Building>(
                         key: ValueKey(_selectedBuilding?.id),
                         items: buildings,
